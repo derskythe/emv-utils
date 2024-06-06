@@ -119,6 +119,30 @@ struct emv_tlv_t* emv_tlv_list_pop(struct emv_tlv_list_t* list);
 struct emv_tlv_t* emv_tlv_list_find(struct emv_tlv_list_t* list, unsigned int tag);
 
 /**
+ * Const alternative for @ref emv_tlv_list_find
+ * @param list EMV TLV list
+ * @param tag EMV tag to find
+ * @return EMV TLV field. Do NOT free. NULL if not found.
+ */
+#ifdef __GNUC__
+__attribute__((always_inline))
+#endif
+inline const struct emv_tlv_t* emv_tlv_list_find_const(
+	const struct emv_tlv_list_t* list,
+	unsigned int tag
+)
+{
+	return emv_tlv_list_find((struct emv_tlv_list_t*)list, tag);
+}
+
+/**
+ * Determine whether EMV TLV list contains duplicate fields
+ * @param list EMV TLV list
+ * @return Boolean indicating whether EMV TLV list contains duplicate fields
+ */
+bool emv_tlv_list_has_duplicate(const struct emv_tlv_list_t* list);
+
+/**
  * Append one EMV TLV list to another
  * @param list EMV TLV list to which to append
  * @param other EMV TLV list that will be appended to the list provided in @c list.
@@ -143,6 +167,17 @@ int emv_tlv_list_append(struct emv_tlv_list_t* list, struct emv_tlv_list_t* othe
  * @return Zero for success. Less than zero for internal error. Greater than zero for parse error.
  */
 int emv_tlv_parse(const void* ptr, size_t len, struct emv_tlv_list_t* list);
+
+/**
+ * Determine whether a specific EMV tag with source 'Terminal' should be
+ * encoded as format 'n'
+ * @note This function is typically needed for Data Object List (DOL) processing
+ * @remark See EMV 4.4 Book 3, Annex A1
+ *
+ * @param tag EMV tag with source 'Terminal'
+ * @return Boolean indicating EMV tag should be encoded as format 'n'
+ */
+bool emv_tlv_is_terminal_format_n(unsigned int tag);
 
 /**
  * Convert EMV format "ans" to ISO/IEC 8859 string and omit control characters

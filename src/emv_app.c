@@ -31,7 +31,7 @@
 #include <assert.h>
 
 // Helper functions
-static int emv_app_extract_display_name(struct emv_app_t* app, struct emv_tlv_list_t* pse_tlv_list);
+static int emv_app_extract_display_name(struct emv_app_t* app, const struct emv_tlv_list_t* pse_tlv_list);
 static int emv_app_extract_priority_indicator(struct emv_app_t* app);
 static inline bool emv_app_list_is_valid(const struct emv_app_list_t* list);
 
@@ -62,7 +62,7 @@ struct emv_app_t* emv_app_create_from_pse(
 	}
 
 	// Use ADF Name field for AID
-	app->aid = emv_tlv_list_find(&app->tlv_list, EMV_TAG_4F_APPLICATION_DF_NAME);
+	app->aid = emv_tlv_list_find_const(&app->tlv_list, EMV_TAG_4F_APPLICATION_DF_NAME);
 	if (!app->aid) {
 		// Invalid FCI
 		goto error;
@@ -120,7 +120,7 @@ struct emv_app_t* emv_app_create_from_fci(const void* fci, size_t fci_len)
 	}
 
 	// Use DF Name field for AID
-	app->aid = emv_tlv_list_find(&app->tlv_list, EMV_TAG_84_DF_NAME);
+	app->aid = emv_tlv_list_find_const(&app->tlv_list, EMV_TAG_84_DF_NAME);
 	if (!app->aid) {
 		// Invalid FCI
 		goto error;
@@ -143,12 +143,12 @@ error:
 	return NULL;
 }
 
-static int emv_app_extract_display_name(struct emv_app_t* app, struct emv_tlv_list_t* pse_tlv_list)
+static int emv_app_extract_display_name(struct emv_app_t* app, const struct emv_tlv_list_t* pse_tlv_list)
 {
 	int r;
-	struct emv_tlv_t* issuer_code_table_index;
+	const struct emv_tlv_t* issuer_code_table_index;
 	unsigned int issuer_code_table = 0;
-	struct emv_tlv_t* tlv;
+	const struct emv_tlv_t* tlv;
 
 	if (!app) {
 		return -1;
@@ -159,9 +159,9 @@ static int emv_app_extract_display_name(struct emv_app_t* app, struct emv_tlv_li
 	 * interpret Application Preferred Name
 	 */
 	if (pse_tlv_list) {
-		issuer_code_table_index = emv_tlv_list_find(pse_tlv_list, EMV_TAG_9F11_ISSUER_CODE_TABLE_INDEX);
+		issuer_code_table_index = emv_tlv_list_find_const(pse_tlv_list, EMV_TAG_9F11_ISSUER_CODE_TABLE_INDEX);
 	} else {
-		issuer_code_table_index = emv_tlv_list_find(&app->tlv_list, EMV_TAG_9F11_ISSUER_CODE_TABLE_INDEX);
+		issuer_code_table_index = emv_tlv_list_find_const(&app->tlv_list, EMV_TAG_9F11_ISSUER_CODE_TABLE_INDEX);
 	}
 	if (issuer_code_table_index && issuer_code_table_index->length == 1) {
 		// Assume Additional Terminal Capabilities (field 9F40) was correctly
@@ -173,7 +173,7 @@ static int emv_app_extract_display_name(struct emv_app_t* app, struct emv_tlv_li
 	}
 	if (issuer_code_table) {
 		// Use Application Preferred Name as display name
-		tlv = emv_tlv_list_find(&app->tlv_list, EMV_TAG_9F12_APPLICATION_PREFERRED_NAME);
+		tlv = emv_tlv_list_find_const(&app->tlv_list, EMV_TAG_9F12_APPLICATION_PREFERRED_NAME);
 		if (tlv) {
 			// Application Preferred Name is limited to non-control characters
 			// defined in the ISO/IEC 8859 part designated in the Issuer Code
@@ -207,7 +207,7 @@ static int emv_app_extract_display_name(struct emv_app_t* app, struct emv_tlv_li
 	}
 
 	// Otherwise use Application Label as display name
-	tlv = emv_tlv_list_find(&app->tlv_list, EMV_TAG_50_APPLICATION_LABEL);
+	tlv = emv_tlv_list_find_const(&app->tlv_list, EMV_TAG_50_APPLICATION_LABEL);
 	if (tlv) {
 		// Application Label is limited to a-z, A-Z, 0-9 and the space
 		// See EMV 4.4 Book 1, 4.3
@@ -242,7 +242,7 @@ static int emv_app_extract_display_name(struct emv_app_t* app, struct emv_tlv_li
 
 static int emv_app_extract_priority_indicator(struct emv_app_t* app)
 {
-	struct emv_tlv_t* tlv;
+	const struct emv_tlv_t* tlv;
 
 	if (!app) {
 		return -1;
@@ -251,7 +251,7 @@ static int emv_app_extract_priority_indicator(struct emv_app_t* app)
 	app->priority = 0;
 	app->confirmation_required = false;
 
-	tlv = emv_tlv_list_find(&app->tlv_list, EMV_TAG_87_APPLICATION_PRIORITY_INDICATOR);
+	tlv = emv_tlv_list_find_const(&app->tlv_list, EMV_TAG_87_APPLICATION_PRIORITY_INDICATOR);
 	if (!tlv || tlv->length < 1) {
 		// Application Priority Indicator is not available; ignore
 		return 0;
@@ -406,4 +406,161 @@ struct emv_app_t* emv_app_list_pop(struct emv_app_list_t* list)
 	}
 
 	return app;
+}
+
+struct emv_app_t* emv_app_list_remove_index(
+	struct emv_app_list_t* list,
+	unsigned int index
+)
+{
+	struct emv_app_t* prev = NULL;
+
+	if (!emv_app_list_is_valid(list)) {
+		return NULL;
+	}
+
+	for (struct emv_app_t* app = list->front; app != NULL; app = app->next) {
+		if (index == 0) {
+			if (!prev) {
+				// Remove app from front of list
+				return emv_app_list_pop(list);
+			}
+
+			prev->next = app->next;
+			if (!app->next) {
+				// App at back of list
+				list->back = prev;
+			}
+			app->next = NULL;
+			return app;
+		}
+
+		// Advance and remember previous app
+		--index;
+		prev = app;
+	}
+
+	return NULL;
+}
+
+static int emv_app_list_insert(
+	struct emv_app_list_t* list,
+	struct emv_app_t* pos,
+	struct emv_app_t* app
+)
+{
+	if (!emv_app_list_is_valid(list)) {
+		return -1;
+	}
+	if (!pos) {
+		return -2;
+	}
+	if (!app) {
+		return -3;
+	}
+
+	if (list->back == pos) {
+		// Insert at back of list
+		return emv_app_list_push(list, app);
+	} else if (pos->next) {
+		// Insert in middle of list
+		app->next = pos->next;
+		pos->next = app;
+	} else {
+		// Invalid list or position
+		return -4;
+	}
+
+	return 0;
+}
+
+static int emv_app_list_push_front(
+	struct emv_app_list_t* list,
+	struct emv_app_t* app
+)
+{
+	if (!emv_app_list_is_valid(list)) {
+		return -1;
+	}
+	if (!app) {
+		return -2;
+	}
+
+	if (list->front) {
+		app->next = list->front;
+		list->front = app;
+	} else {
+		list->front = app;
+		list->back = app;
+	}
+
+	return 0;
+}
+
+int emv_app_list_sort_priority(struct emv_app_list_t* list)
+{
+	int r;
+	struct emv_app_t* app;
+	struct emv_app_list_t sorted_list = EMV_APP_LIST_INIT;
+
+	if (!emv_app_list_is_valid(list)) {
+		return -1;
+	}
+
+	// Given that the app list should be very short, an insertion sort is a
+	// reasonable approach
+	while ((app = emv_app_list_pop(list))) {
+		struct emv_app_t* pos = NULL;
+
+		// Value of 1 is the highest priority
+		// See EMV 4.4 Book 1, 12.2.3, table 13
+		// However, the EMV specification does not state how an application
+		// without a priority indicator should be prioritised relative to an
+		// application with a priority indicator, and therefore this
+		// implementation chooses to favour applications with a priority
+		// indicator over those without.
+		for (struct emv_app_t* cur = sorted_list.front; cur != NULL; cur = cur->next) {
+			if (!cur->priority) {
+				break;
+			}
+			if (app->priority && app->priority < cur->priority) {
+				break;
+			}
+			pos = cur;
+		}
+		if (pos) {
+			r = emv_app_list_insert(&sorted_list, pos, app);
+		} else {
+			r = emv_app_list_push_front(&sorted_list, app);
+		}
+		if (r) {
+			emv_app_list_clear(&sorted_list);
+			return -2;
+		}
+	}
+
+	*list = sorted_list;
+	return 0;
+}
+
+bool emv_app_list_selection_is_required(const struct emv_app_list_t* list)
+{
+	size_t app_count = 0;
+
+	if (!emv_app_list_is_valid(list)) {
+		return false;
+	}
+
+	for (const struct emv_app_t* app = list->front; app != NULL; app = app->next) {
+		if (app->confirmation_required) {
+			return true;
+		}
+		++app_count;
+
+		if (app_count > 1) {
+			return true;
+		}
+	}
+
+	return false;
 }

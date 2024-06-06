@@ -42,6 +42,11 @@ static int emv_tal_parse_aef_record(
 	const struct emv_tlv_list_t* supported_aids,
 	struct emv_app_list_t* app_list
 );
+static int emv_tal_read_sfi_records(
+	struct emv_ttl_t* ttl,
+	const struct emv_afl_entry_t* afl_entry,
+	struct emv_tlv_list_t* list
+);
 
 int emv_tal_read_pse(
 	struct emv_ttl_t* ttl,
@@ -122,14 +127,23 @@ int emv_tal_read_pse(
 
 	// Find Short File Identifier (SFI) for PSE directory Application Elementary File (AEF)
 	// See EMV 4.4 Book 1, 11.3.4, table 8
-	pse_sfi = emv_tlv_list_find(&pse_tlv_list, EMV_TAG_88_SFI);
+	pse_sfi = emv_tlv_list_find_const(&pse_tlv_list, EMV_TAG_88_SFI);
 	if (!pse_sfi) {
-		emv_debug_trace_msg("emv_tlv_list_find() failed; pse_sfi=%p", pse_sfi);
+		emv_debug_trace_msg("emv_tlv_list_find_const() failed; pse_sfi=%p", pse_sfi);
 
 		// Failed to find SFI for PSE records; terminal may continue session
 		// See EMV 4.4 Book 1, 12.3.2, step 1
 		emv_debug_error("Failed to find SFI for PSE records");
 		r = EMV_TAL_RESULT_PSE_SFI_NOT_FOUND;
+		goto exit;
+	}
+	if (pse_sfi->length != 1 || !pse_sfi->value) {
+		emv_debug_trace_data("pse_sfi=", pse_sfi->value, pse_sfi->length);
+
+		// Invalid SFI for PSE; terminal may continue session
+		// See EMV 4.4 Book 1, 12.3.2, step 1
+		emv_debug_error("Invalid SFI length or value for PSE records");
+		r = EMV_TAL_RESULT_PSE_SFI_INVALID;
 		goto exit;
 	}
 
@@ -177,15 +191,15 @@ int emv_tal_read_pse(
 		);
 		if (r) {
 			emv_debug_trace_msg("emv_tal_parse_aef_record() failed; r=%d", r);
-		}
-		if (r > 0) {
-			// Invalid PSE AEF record; ignore and continue
-			emv_debug_error("Invalid PSE AEF record");
-		}
-		if (r < 0) {
-			// Unknown error; terminate session
-			emv_debug_error("Unknown PSE AEF record error");
-			goto exit;
+			if (r < 0) {
+				// Unknown error; terminate session
+				emv_debug_error("Unknown PSE AEF record error");
+				goto exit;
+			}
+			if (r > 0) {
+				// Invalid PSE AEF record; ignore and continue
+				emv_debug_error("Invalid PSE AEF record");
+			}
 		}
 	}
 
@@ -225,8 +239,8 @@ static int emv_tal_parse_aef_record(
 		return EMV_TAL_RESULT_PSE_AEF_PARSE_FAILED;
 	}
 	if (aef_template_tlv.tag != EMV_TAG_70_DATA_TEMPLATE) {
-		// Record doesn't contain AEF template; ignore and continue
-		emv_debug_error("Record doesn't contain AEF template");
+		// No AEF template in PSE record; ignore and continue
+		emv_debug_error("Unexpected data element 0x%02X in PSE AEF record", tlv.tag);
 		return EMV_TAL_RESULT_PSE_AEF_INVALID;
 	}
 
@@ -437,44 +451,191 @@ int emv_tal_find_supported_apps(
 	return 0;
 }
 
-int emv_tal_parse_gpo_response(
-	const void* buf,
-	size_t len,
-	struct emv_tlv_list_t* list,
-	struct emv_tlv_t** aip,
-	struct emv_tlv_t** afl
+int emv_tal_select_app(
+	struct emv_ttl_t* ttl,
+	const uint8_t* aid,
+	size_t aid_len,
+	struct emv_app_t** selected_app
 )
 {
 	int r;
-	struct iso8825_tlv_t gpo_tlv;
-	struct emv_tlv_list_t gpo_list = EMV_TLV_LIST_INIT;
-	struct emv_tlv_t* tlv;
+	uint8_t fci[EMV_RAPDU_DATA_MAX];
+	size_t fci_len = sizeof(fci);
+	uint16_t sw1sw2;
+	struct emv_app_t* app;
 
-	if (!buf || !len || !list) {
-		return -1;
+	if (!ttl || !aid || aid_len < 5 || aid_len > 16 || !selected_app) {
+		// Invalid parameters; terminate session
+		return EMV_TAL_ERROR_INVALID_PARAMETER;
+	}
+	*selected_app = NULL;
+
+	// SELECT application
+	// See EMV 4.4 Book 1, 12.4
+	emv_debug_info_data("SELECT application", aid, aid_len);
+	r = emv_ttl_select_by_df_name(ttl, aid, aid_len, fci, &fci_len, &sw1sw2);
+	if (r) {
+		emv_debug_trace_msg("emv_ttl_select_by_df_name() failed; r=%d", r);
+
+		// TTL failure; terminate session
+		// (bad card or reader)
+		emv_debug_error("TTL failure");
+		return EMV_TAL_ERROR_TTL_FAILURE;
 	}
 
+	if (sw1sw2 != 0x9000) {
+		switch (sw1sw2) {
+			case 0x6A81:
+				// Card blocked or SELECT not supported; terminate session
+				emv_debug_error("Card blocked or SELECT not supported");
+				return EMV_TAL_ERROR_CARD_BLOCKED;
+
+			case 0x6A82:
+				// Application not found; ignore app and continue
+				emv_debug_info("Application not found");
+				return EMV_TAL_RESULT_APP_NOT_FOUND;
+
+			case 0x6283:
+				// Application blocked; ignore app and continue
+				emv_debug_info("Application is blocked");
+				return EMV_TAL_RESULT_APP_BLOCKED;
+
+			default:
+				// Unknown error; ignore app and continue
+				// See EMV Book 1, 12.4, regarding status other than 9000
+				emv_debug_error("SW1SW2=0x%04hX\n", sw1sw2);
+				return EMV_TAL_RESULT_APP_SELECTION_FAILED;
+		}
+	}
+
+	emv_debug_info_tlv("FCI", fci, fci_len);
+
+	// Parse FCI to confirm that selected application is valid
+	app = emv_app_create_from_fci(fci, fci_len);
+	if (!app) {
+		emv_debug_trace_msg("emv_app_create_from_fci() failed; app=%p", app);
+
+		// Failed to parse FCI; ignore app and continue
+		// See EMV Book 1, 12.4, regarding format errors
+		emv_debug_error("Failed to parse application FCI");
+		return EMV_TAL_RESULT_APP_FCI_PARSE_FAILED;
+	}
+
+	// Ensure that the AID used by the SELECT command exactly matches the
+	// DF Name (field 84) provided by the FCI
+	// See EMV 4.4 Book 1, 12.4
+	// NOTE: emv_app_create_from_fci() sets AID to DF Name (field 84)
+	if (app->aid->length != aid_len ||
+		memcmp(app->aid->value, aid, aid_len)
+	) {
+		emv_debug_error("DF Name mismatch");
+		emv_app_free(app);
+		return EMV_TAL_RESULT_APP_SELECTION_FAILED;
+	}
+
+	// Output
+	*selected_app = app;
+
+	return 0;
+}
+
+int emv_tal_get_processing_options(
+	struct emv_ttl_t* ttl,
+	const void* data,
+	size_t data_len,
+	struct emv_tlv_list_t* list,
+	const struct emv_tlv_t** aip,
+	const struct emv_tlv_t** afl
+)
+{
+	int r;
+	uint8_t gpo_response[EMV_RAPDU_DATA_MAX];
+	size_t gpo_response_len = sizeof(gpo_response);
+	uint16_t sw1sw2;
+	struct iso8825_tlv_t gpo_tlv;
+	struct emv_tlv_list_t gpo_list = EMV_TLV_LIST_INIT;
+	const struct emv_tlv_t* tlv;
+
+	if (!ttl || !list) {
+		// Invalid parameters; terminate session
+		return EMV_TAL_ERROR_INVALID_PARAMETER;
+	}
+	if (data && (data_len < 2 || data_len > 255)) { // See EMV_CAPDU_DATA_MAX
+		// Invalid parameters; terminate session
+		return EMV_TAL_ERROR_INVALID_PARAMETER;
+	}
+	if (!data && data_len) {
+		// Invalid parameters; terminate session
+		return EMV_TAL_ERROR_INVALID_PARAMETER;
+	}
+	if (aip) {
+		*aip = NULL;
+	}
+	if (afl) {
+		*afl = NULL;
+	}
+
+	// GET PROCESSING OPTIONS
+	// See EMV 4.4 Book 3, 10.1
+	emv_debug_info_data("GET PROCESSING OPTIONS", data, data_len);
+	r = emv_ttl_get_processing_options(ttl, data, data_len, gpo_response, &gpo_response_len, &sw1sw2);
+	if (r) {
+		emv_debug_trace_msg("emv_ttl_get_processing_options() failed; r=%d", r);
+
+		// TTL failure; terminate session
+		// (bad card or reader)
+		emv_debug_error("TTL failure");
+		return EMV_TAL_ERROR_TTL_FAILURE;
+	}
+
+	if (sw1sw2 != 0x9000) {
+		switch (sw1sw2) {
+			case 0x6985:
+				// Conditions of use not satisfied; ignore app and continue
+				// See EMV 4.4 Book 3, 10.1
+				emv_debug_info("Conditions of use not satisfied");
+				return EMV_TAL_RESULT_GPO_CONDITIONS_NOT_SATISFIED;
+
+			default:
+				// Unknown error; terminate session
+				// According to EMV 4.4 Book 3, 10.1 the card should provide
+				// no status other than 9000 or 6985
+				emv_debug_error("SW1SW2=0x%04hX", sw1sw2);
+				return EMV_TAL_ERROR_GPO_FAILED;
+		}
+	}
+
+	emv_debug_info_tlv("GPO response", gpo_response, gpo_response_len);
+
 	// Determine GPO response format
-	r = iso8825_ber_decode(buf, len, &gpo_tlv);
+	r = iso8825_ber_decode(gpo_response, gpo_response_len, &gpo_tlv);
 	if (r <= 0) {
-		// Parse error
-		return 1;
+		emv_debug_trace_msg("iso8825_ber_decode() failed; r=%d", r);
+
+		// Parse error; terminate session
+		// See EMV 4.4 Book 3, 6.5.8.4
+		emv_debug_error("Failed to parse GPO response");
+		return EMV_TAL_ERROR_GPO_PARSE_FAILED;
 	}
 
 	if (gpo_tlv.tag == EMV_TAG_80_RESPONSE_MESSAGE_TEMPLATE_FORMAT_1) {
 		// GPO response format 1
-		// See EMV 4.3 Book 3, 6.5.8.4
+		// See EMV 4.4 Book 3, 6.5.8.4
 
 		// Validate length
-		// See EMV 4.3 Book 3, 10.2
+		// See EMV 4.4 Book 3, 10.2
 		// AIP is 2 bytes
 		// AFL is multiples of 4 bytes
 		if (gpo_tlv.length < 6 || // AIP and at least one AFL entry
 			((gpo_tlv.length - 2) & 0x3) != 0 // AFL is multiple of 4 bytes
 		) {
-			// Parse error
-			return 2;
+			// Parse error; terminate session
+			// See EMV 4.4 Book 3, 6.5.8.4
+			emv_debug_error("Invalid GPO response format 1 length of %u", gpo_tlv.length);
+			return EMV_TAL_ERROR_GPO_PARSE_FAILED;
 		}
+		emv_debug_info_data("AIP", gpo_tlv.value, 2);
+		emv_debug_info_data("AFL", gpo_tlv.value + 2, gpo_tlv.length - 2);
 
 		// Create Application Interchange Profile (field 82)
 		r = emv_tlv_list_push(
@@ -485,9 +646,12 @@ int emv_tal_parse_gpo_response(
 			0
 		);
 		if (r) {
-			// Internal error
-			emv_tlv_list_clear(&gpo_list);
-			return -2;
+			emv_debug_trace_msg("emv_tlv_list_push() failed; r=%d", r);
+
+			// Internal error; terminate session
+			emv_debug_error("Internal error");
+			r = EMV_TAL_ERROR_INTERNAL;
+			goto exit;
 		}
 
 		// Create Application File Locator (field 94)
@@ -499,47 +663,282 @@ int emv_tal_parse_gpo_response(
 			0
 		);
 		if (r) {
-			// Internal error
-			emv_tlv_list_clear(&gpo_list);
-			return -3;
+			emv_debug_trace_msg("emv_tlv_list_push() failed; r=%d", r);
+
+			// Internal error; terminate session
+			emv_debug_error("Internal error");
+			r = EMV_TAL_ERROR_INTERNAL;
+			goto exit;
 		}
 	}
 
 	if (gpo_tlv.tag == EMV_TAG_77_RESPONSE_MESSAGE_TEMPLATE_FORMAT_2) {
 		// GPO response format 2
-		// See EMV 4.3 Book 3, 6.5.8.4
+		// See EMV 4.4 Book 3, 6.5.8.4
 
 		r = emv_tlv_parse(gpo_tlv.value, gpo_tlv.length, &gpo_list);
-		if (r < 0) {
-			// Internal error
-			emv_tlv_list_clear(&gpo_list);
-			return -4;
-		}
-		if (r > 0) {
-			// Parse error
-			emv_tlv_list_clear(&gpo_list);
-			return 3;
+		if (r) {
+			emv_debug_trace_msg("emv_tlv_parse() failed; r=%d", r);
+			if (r < 0) {
+				// Internal error; terminate session
+				emv_debug_error("Internal error");
+				r = EMV_TAL_ERROR_INTERNAL;
+				goto exit;
+			}
+			if (r > 0) {
+				// Parse error; terminate session
+				// See EMV 4.4 Book 3, 6.5.8.4
+				emv_debug_error("Failed to parse GPO response format 2");
+				r = EMV_TAL_ERROR_GPO_PARSE_FAILED;
+				goto exit;
+			}
 		}
 	}
 
 	// Populate AIP pointer
-	tlv = emv_tlv_list_find(&gpo_list, EMV_TAG_82_APPLICATION_INTERCHANGE_PROFILE);
-	if (tlv && aip) {
+	tlv = emv_tlv_list_find_const(&gpo_list, EMV_TAG_82_APPLICATION_INTERCHANGE_PROFILE);
+	if (!tlv) {
+		// Mandatory field missing; terminate session
+		// See EMV 4.4 Book 3, 6.5.8.4
+		emv_debug_error("AIP not found in GPO response");
+		r = EMV_TAL_ERROR_GPO_FIELD_NOT_FOUND;
+		goto exit;
+	}
+	if (aip) {
 		*aip = tlv;
 	}
 
 	// Populate AFL pointer
-	tlv = emv_tlv_list_find(&gpo_list, EMV_TAG_94_APPLICATION_FILE_LOCATOR);
-	if (tlv && afl) {
+	tlv = emv_tlv_list_find_const(&gpo_list, EMV_TAG_94_APPLICATION_FILE_LOCATOR);
+	if (!tlv) {
+		// Mandatory field missing; terminate session
+		// See EMV 4.4 Book 3, 6.5.8.4
+		emv_debug_error("AFL not found in GPO response");
+		r = EMV_TAL_ERROR_GPO_FIELD_NOT_FOUND;
+		goto exit;
+	}
+	if (afl) {
 		*afl = tlv;
 	}
 
 	r = emv_tlv_list_append(list, &gpo_list);
 	if (r) {
-		// Internal error
-		emv_tlv_list_clear(&gpo_list);
-		return -5;
+		emv_debug_trace_msg("emv_tlv_list_append() failed; r=%d", r);
+
+		// Internal error; terminate session
+		emv_debug_error("Internal error");
+		r = EMV_TAL_ERROR_INTERNAL;
+		goto exit;
 	}
 
-	return 0;
+	// Successful GPO processing
+	r = 0;
+	goto exit;
+
+exit:
+	emv_tlv_list_clear(&gpo_list);
+	return r;
+}
+
+static int emv_tal_read_sfi_records(
+	struct emv_ttl_t* ttl,
+	const struct emv_afl_entry_t* afl_entry,
+	struct emv_tlv_list_t* list
+)
+{
+	int r;
+	bool oda_record_invalid = false;
+
+	if (!ttl || !afl_entry || !list) {
+		// Invalid parameters; terminate session
+		return EMV_TAL_ERROR_INVALID_PARAMETER;
+	}
+
+	for (uint8_t record_number = afl_entry->first_record; record_number <= afl_entry->last_record; ++record_number) {
+		uint8_t record[EMV_RAPDU_DATA_MAX];
+		size_t record_len = sizeof(record);
+		uint16_t sw1sw2;
+		struct iso8825_tlv_t record_template;
+
+		// READ RECORD
+		// See EMV 4.4 Book 3, 10.2
+		emv_debug_info("READ RECORD from SFI %u, record %u", afl_entry->sfi, record_number);
+		r = emv_ttl_read_record(ttl, afl_entry->sfi, record_number, record, &record_len, &sw1sw2);
+		if (r) {
+			emv_debug_trace_msg("emv_ttl_read_record() failed; r=%d", r);
+			// TTL failure; terminate session
+			// (bad card or reader)
+			emv_debug_error("TTL failure");
+			return EMV_TAL_ERROR_TTL_FAILURE;
+		}
+
+		if (sw1sw2 != 0x9000) {
+			// Failed to READ RECORD; terminate session
+			// See EMV 4.4 Book 3, 10.2
+			emv_debug_error("Failed to READ RECORD");
+			return EMV_TAL_ERROR_READ_RECORD_FAILED;
+		}
+
+		// The records for SFIs 1 - 10 must be encoded as field 70 and the
+		// records for SFIs beyond that range are outside of EMV except for the
+		// card Transaction Log
+		// See EMV 4.4 Book 3, 5.3.2.2
+		// See EMV 4.4 Book 3, 6.5.11.4
+
+		// The records read for offline data authentication must be encoded as
+		// field 70. If not, then offline data authentication will be
+		// considered to have been performed but failed
+		// See EMV 4.4 Book 3, 10.3 (page 98)
+
+		// Therefore, any record that is not encoded as field 70 should not be
+		// parsed for EMV fields and invalidates offline data authentication.
+		if (record[0] != EMV_TAG_70_DATA_TEMPLATE) {
+			if (afl_entry->sfi >= 1 && afl_entry->sfi <= 10) {
+				// Invalid record for SFIs 1 - 10
+				// EMV 4.4 Book 3, 6.5.11.4
+				emv_debug_error("Invalid record for SFI %u", afl_entry->sfi);
+				return EMV_TAL_ERROR_READ_RECORD_INVALID;
+			}
+
+			// Although offline data authentication is no longer possible,
+			// reading of records may continue
+			// See EMV 4.4 Book 3, 10.3 (page 98)
+			emv_debug_error("Offline data authentication not possible due to invalid record");
+			oda_record_invalid = true;
+			continue;
+		}
+
+		if (afl_entry->sfi >= 1 && afl_entry->sfi <= 10) {
+			// Record should contain a single record template for SFIs 1 - 10
+			// See EMV 4.4 Book 3, 6.5.11.4
+			r = iso8825_ber_decode(record, record_len, &record_template);
+			if (r <= 0) {
+				emv_debug_trace_msg("iso8825_ber_decode() failed; r=%d", r);
+
+				// Failed to parse application data record template
+				// See EMV 4.4 Book 3, 6.5.11.4
+				emv_debug_error("Failed to parse record template");
+				return EMV_TAL_ERROR_READ_RECORD_INVALID;
+			}
+			if (record_template.tag != EMV_TAG_70_DATA_TEMPLATE) {
+				// Invalid record template for SFIs 1 - 10
+				// See EMV 4.4 Book 3, 6.5.11.4
+				emv_debug_error("Invalid record template tag 0x%02X", record_template.tag);
+				return EMV_TAL_ERROR_READ_RECORD_INVALID;
+			}
+			if (record_template.length + 3 < record_len) { // 3 bytes for ID and 2-byte length
+				// Record should contain a single record template without
+				// additional data after it
+				// See EMV 4.4 Book 3, 6.5.11.4
+				emv_debug_error("Invalid record template length %u", record_template.length);
+				return EMV_TAL_ERROR_READ_RECORD_INVALID;
+			}
+
+			if (!oda_record_invalid) {
+				emv_debug_info("Record template content used for offline data authentication");
+				// TODO: Compute offline data authentication here for SFIs 1 - 10
+			}
+		} else {
+			if (!oda_record_invalid) {
+				emv_debug_info("Record used verbatim for offline data authentication");
+				// TODO: Compute offline data authentication here for SFIs 11 - 30
+			}
+		}
+
+		// Parse application data knowing that the record starts with 70 and
+		// that it contains a single record template for SFIs 1 - 10. The EMV
+		// specification does not indicate whether SFIs beyond 1 - 10 may
+		// contain multiple record templates or additional data after the
+		// record template(s), and only states that the record template tag and
+		// length should not be excluded during offline data authentication
+		// processing. This implementation therefore assumes that any record
+		// that has passed the preceding validations is suitable for parsing.
+		r = emv_tlv_parse(record, record_len, list);
+		if (r) {
+			emv_debug_trace_msg("emv_tlv_parse() failed; r=%d", r);
+			if (r < 0) {
+				// Internal error; terminate session
+				emv_debug_error("Internal error");
+				return EMV_TAL_ERROR_INTERNAL;
+			}
+			if (r > 0) {
+				// Parse error; terminate session
+				emv_debug_error("Failed to parse application data record");
+				return EMV_TAL_ERROR_READ_RECORD_PARSE_FAILED;
+			}
+		}
+	}
+
+	// Successfully read records although offline data authentication may have
+	// failed
+	if (oda_record_invalid) {
+		return EMV_TAL_RESULT_ODA_RECORD_INVALID;
+	} else {
+		return 0;
+	}
+}
+
+int emv_tal_read_afl_records(
+	struct emv_ttl_t* ttl,
+	const uint8_t* afl,
+	size_t afl_len,
+	struct emv_tlv_list_t* list
+)
+{
+	int r;
+	struct emv_afl_itr_t afl_itr;
+	struct emv_afl_entry_t afl_entry;
+	bool oda_record_invalid = false;
+
+	if (!ttl || !afl || !afl_len || !list) {
+		// Invalid parameters; terminate session
+		return EMV_TAL_ERROR_INVALID_PARAMETER;
+	}
+
+	r = emv_afl_itr_init(afl, afl_len, &afl_itr);
+	if (r) {
+		emv_debug_trace_msg("emv_afl_itr_init() failed; r=%d", r);
+		if (r < 0) {
+			// Internal error; terminate session
+			emv_debug_error("Internal error");
+			return EMV_TAL_ERROR_INTERNAL;
+		}
+		if (r > 0) {
+			// Invalid AFL; terminate session
+			// See EMV 4.4 Book 3, 10.2
+			emv_debug_error("Invalid AFL");
+			return EMV_TAL_ERROR_AFL_INVALID;
+		}
+	}
+
+	while ((r = emv_afl_itr_next(&afl_itr, &afl_entry)) > 0) {
+		r = emv_tal_read_sfi_records(ttl, &afl_entry, list);
+		if (r) {
+			emv_debug_trace_msg("emv_tal_read_sfi_records() failed; r=%d", r);
+			if (r == EMV_TAL_RESULT_ODA_RECORD_INVALID) {
+				// Continue regardless of offline data authentication failure
+				// See EMV 4.4 Book 3, 10.3 (page 98)
+				oda_record_invalid = true;
+			} else {
+				// Return error value as-is
+				return r;
+			}
+		}
+	}
+	if (r < 0) {
+		emv_debug_trace_msg("emv_afl_itr_next() failed; r=%d", r);
+
+		// AFL parse error; terminate session
+		// See EMV 4.4 Book 3, 10.2
+		emv_debug_error("AFL parse error");
+		return EMV_TAL_ERROR_AFL_INVALID;
+	}
+
+	// Successfully read records although offline data authentication may have
+	// failed
+	if (oda_record_invalid) {
+		return EMV_TAL_RESULT_ODA_RECORD_INVALID;
+	} else {
+		return 0;
+	}
 }

@@ -2,7 +2,7 @@
  * @file emv_ttl.h
  * @brief EMV Terminal Transport Layer (TTL)
  *
- * Copyright (c) 2021 Leon Lynch
+ * Copyright (c) 2021, 2024 Leon Lynch
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -96,7 +96,7 @@ int emv_ttl_trx(
 /**
  * SELECT (0xA4) the first or only application by Dedicated File (DF) name
  * and provide File Control Information (FCI) template.
- * @remark See EMV 4.3 Book 1, 11.3
+ * @remark See EMV 4.4 Book 1, 11.3
  * @remark See ISO 7816-4:2005, 7.1.1
  *
  * @param ctx EMV Terminal Transport Layer context
@@ -119,7 +119,7 @@ int emv_ttl_select_by_df_name(
 /**
  * SELECT (0xA4) the next application by Dedicated File (DF) name and
  * provide File Control Information (FCI) template.
- * @remark See EMV 4.3 Book 1, 11.3
+ * @remark See EMV 4.4 Book 1, 11.3
  * @remark See ISO 7816-4:2005, 7.1.1
  *
  * @param ctx EMV Terminal Transport Layer context
@@ -141,7 +141,7 @@ int emv_ttl_select_by_df_name_next(
 
 /**
  * READ RECORD (0xB2) from current file
- * @remark See EMV 4.3 Book 1, 11.2
+ * @remark See EMV 4.4 Book 1, 11.2
  * @remark See ISO 7816-4:2005, 7.3.3
  *
  * @param ctx EMV Terminal Transport Layer context
@@ -163,11 +163,11 @@ int emv_ttl_read_record(
 
 /**
  * GET PROCESSING OPTIONS (0xA8) for current application
- * @remark EMV 4.3 Book 3, 6.5.8
+ * @remark EMV 4.4 Book 3, 6.5.8
  *
  * @param ctx EMV Terminal Transport Layer context
- * @param pdol_data Processing Options Data Object List (PDOL) data requested by ICC. NULL if no data requested by ICC.
- * @param pdol_data_len Length of PDOL data in bytes. Zero if no data requested by ICC.
+ * @param data Command Template (field 83) according to Processing Options Data Object List (PDOL). NULL if no PDOL.
+ * @param data_len Length of Command Template (field 83) in bytes. Zero if no PDOL.
  * @param response Response output
  * @param response_len Length of response output in bytes
  * @param sw1sw2 Status bytes (SW1-SW2) output
@@ -175,8 +175,8 @@ int emv_ttl_read_record(
  */
 int emv_ttl_get_processing_options(
 	struct emv_ttl_t* ctx,
-	const void* pdol_data,
-	size_t pdol_data_len,
+	const void* data,
+	size_t data_len,
 	void* response,
 	size_t* response_len,
 	uint16_t* sw1sw2

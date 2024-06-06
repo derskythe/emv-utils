@@ -39,10 +39,7 @@
 #include <argp.h>
 
 // HACK: remove
-#include "emv_dol.h"
 #include "emv_ttl.h"
-#include "emv_tal.h"
-#include "iso7816_strings.h"
 
 // Forward declarations
 struct emv_txn_t;
@@ -137,6 +134,12 @@ struct emv_txn_t {
 
 	// ICC data
 	struct emv_tlv_list_t icc;
+
+	// Cardholder application selection required?
+	bool application_selection_required;
+
+	// Selected application
+	struct emv_app_t* selected_app;
 };
 static struct emv_txn_t emv_txn;
 
@@ -375,6 +378,7 @@ static void emv_txn_destroy(struct emv_txn_t* emv_txn)
 	emv_tlv_list_clear(&emv_txn->supported_aids);
 	emv_tlv_list_clear(&emv_txn->terminal);
 	emv_tlv_list_clear(&emv_txn->icc);
+	emv_app_free(emv_txn->selected_app);
 }
 
 int main(int argc, char** argv)
@@ -539,173 +543,117 @@ int main(int argc, char** argv)
 		goto emv_exit;
 	}
 
-	if (emv_app_list_is_empty(&app_list)) {
-		printf("No supported applications\n");
-		goto emv_exit;
-	}
-
 	printf("Candidate applications:\n");
 	for (struct emv_app_t* app = app_list.front; app != NULL; app = app->next) {
 		print_emv_app(app);
 	}
 
-	// HACK: test application selection
-	{
-		char str[1024];
+	emv_txn.application_selection_required = emv_app_list_selection_is_required(&app_list);
+	if (emv_txn.application_selection_required) {
+		printf("Cardholder selection is required\n");
+	}
 
-		// Use first application
-		struct emv_app_t* current_app = emv_app_list_pop(&app_list);
-		if (!current_app) {
-			printf("No supported applications\n");
-			goto emv_exit;
-		}
-		emv_app_list_clear(&app_list);
+	do {
+		unsigned int index;
 
-		uint8_t current_aid[16];
-		size_t current_aid_len = current_app->aid->length;
-		memcpy(current_aid, current_app->aid->value, current_app->aid->length);
-		emv_app_free(current_app);
-		current_app = NULL;
+		if (emv_txn.application_selection_required) {
+			unsigned int app_count = 0;
+			int r;
+			char s[4]; // two digits, newline and null
+			unsigned int input = 0;
 
-		// Select application
-		print_buf("\nSELECT application", current_aid, current_aid_len);
-		uint8_t fci[EMV_RAPDU_DATA_MAX];
-		size_t fci_len = sizeof(fci);
-		uint16_t sw1sw2;
-		r = emv_ttl_select_by_df_name(&emv_txn.ttl, current_aid, current_aid_len, fci, &fci_len, &sw1sw2);
-		if (r) {
-			printf("Failed to select application; r=%d\n", r);
-			goto emv_exit;
-		}
-		print_buf("FCI", fci, fci_len);
-		print_emv_buf(fci, fci_len, "  ", 0);
-		printf("SW1SW2 = %04hX (%s)\n", sw1sw2, iso7816_sw1sw2_get_string(sw1sw2 >> 8, sw1sw2 & 0xff, str, sizeof(str)));
-
-		if (sw1sw2 != 0x9000) {
-			goto emv_exit;
-		}
-
-		// Create EMV application object
-		struct emv_app_t* app;
-		app = emv_app_create_from_fci(fci, fci_len);
-		if (r) {
-			printf("emv_app_populate_from_fci() failed; r=%d\n", r);
-			goto emv_exit;
-		}
-		printf("\n");
-		print_emv_app(app);
-		print_emv_tlv_list(&app->tlv_list);
-
-		// Capture ICC data
-		emv_txn.icc = app->tlv_list;
-		app->tlv_list = EMV_TLV_LIST_INIT;
-		emv_app_free(app);
-
-		// Process PDOL
-		struct emv_tlv_t* pdol;
-		uint8_t gpo_data[EMV_RAPDU_DATA_MAX];
-		size_t gpo_data_len = sizeof(gpo_data);
-		pdol = emv_tlv_list_find(&emv_txn.icc, EMV_TAG_9F38_PDOL);
-		if (pdol) {
-			int dol_data_len;
-			size_t gpo_data_offset;
-
-			dol_data_len = emv_dol_compute_data_length(pdol->value, pdol->length);
-			if (dol_data_len < 0) {
-				printf("emv_dol_compute_data_length() failed; r=%d\n", r);
-				goto emv_exit;
+			printf("\nSelect application:\n");
+			for (struct emv_app_t* app = app_list.front; app != NULL; app = app->next) {
+				++app_count;
+				printf("%u - %s\n", app_count, app->display_name);
+			}
+			printf("Enter number: ");
+			if (!fgets(s, sizeof(s), stdin)) {
+				printf("Invalid input. Try again.\n");
+				continue;
+			}
+			r = sscanf(s, "%u", &input);
+			if (r != 1) {
+				printf("Invalid input. Try again.\n");
+				continue;
+			}
+			if (!input || input > app_count) {
+				printf("Invalid input. Try again.\n");
+				continue;
 			}
 
-			gpo_data[0] = EMV_TAG_83_COMMAND_TEMPLATE;
-			// TODO: proper BER length encoding
-			if (dol_data_len < 0x80) {
-				gpo_data[1] = dol_data_len;
-				gpo_data_offset = 2;
-			} else {
-				printf("PDOL data length greater than 127 bytes not implemented\n");
-				goto emv_exit;
-			}
-			gpo_data_len -= gpo_data_offset;
-
-			r = emv_dol_build_data(
-				pdol->value,
-				pdol->length,
-				&emv_txn.params,
-				&emv_txn.terminal,
-				gpo_data + gpo_data_offset,
-				&gpo_data_len
-			);
-			if (r) {
-				printf("emv_dol_build_data() failed; r=%d\n", r);
-				goto emv_exit;
-			}
-			gpo_data_len += gpo_data_offset;
+			index = input - 1;
 
 		} else {
-			// Use empty Command Template (field 83)
-			// See EMV 4.3 Book 3, 6.5.8.3
-			// See EMV 4.3 Book 3, 10.1
-			gpo_data[0] = EMV_TAG_83_COMMAND_TEMPLATE;
-			gpo_data[1] = 0;
-			gpo_data_len = 2;
+			// Use first application
+			printf("\nSelect first application:\n");
+			index = 0;
 		}
 
-		print_buf("\nGPO data", gpo_data, gpo_data_len);
-
-		// Initiate application processing
-		printf("\nGET PROCESSING OPTIONS\n");
-		uint8_t gpo_response[EMV_RAPDU_DATA_MAX];
-		size_t gpo_response_len = sizeof(gpo_response);
-		r = emv_ttl_get_processing_options(&emv_txn.ttl, gpo_data, gpo_data_len, gpo_response, &gpo_response_len, &sw1sw2);
-		if (r) {
-			printf("Failed to get processign options; r=%d\n", r);
+		r = emv_select_application(&emv_txn.ttl, &app_list, index, &emv_txn.selected_app);
+		if (r < 0) {
+			printf("ERROR: %s\n", emv_error_get_string(r));
 			goto emv_exit;
 		}
-		print_buf("GPO response", gpo_response, gpo_response_len);
-		print_emv_buf(gpo_response, gpo_response_len, "  ", 0);
-		printf("SW1SW2 = %04hX (%s)\n", sw1sw2, iso7816_sw1sw2_get_string(sw1sw2 >> 8, sw1sw2 & 0xff, str, sizeof(str)));
-
-		if (sw1sw2 != 0x9000) {
-			goto emv_exit;
-		}
-
-		// Extract AIP and AFL
-		printf("\nProcessing options:\n");
-		struct emv_tlv_t* aip = NULL;
-		struct emv_tlv_t* afl = NULL;
-		r = emv_tal_parse_gpo_response(gpo_response, gpo_response_len, &emv_txn.icc, &aip, &afl);
-		if (r) {
-			printf("emv_tal_parse_gpo_response() failed; r=%d\n", r);
-			goto emv_exit;
-		}
-		print_emv_tlv(aip, "  ", 1);
-		print_emv_tlv(afl, "  ", 1);
-
-		// Read application data
-		struct emv_afl_itr_t afl_itr;
-		struct emv_afl_entry_t afl_entry;
-		r = emv_afl_itr_init(afl->value, afl->length, &afl_itr);
-		if (r) {
-			printf("emv_afl_itr_init() failed; r=%d\n", r);
-			goto emv_exit;
-		}
-		while ((r = emv_afl_itr_next(&afl_itr, &afl_entry)) > 0) {
-			for (uint8_t record_number = afl_entry.first_record; record_number <= afl_entry.last_record; ++record_number) {
-				uint8_t record[EMV_RAPDU_DATA_MAX];
-				size_t record_len = sizeof(record);
-
-				printf("\nReading application data from SFI %u, record %u\n", afl_entry.sfi, record_number);
-
-				r = emv_ttl_read_record(&emv_txn.ttl, afl_entry.sfi, record_number, record, &record_len, &sw1sw2);
-				if (r) {
-					printf("emv_ttl_read_record() failed; r=%d\n", r);
-					goto emv_exit;
-				}
-
-				print_emv_buf(record, record_len, "  ", 0);
+		if (r > 0) {
+			printf("OUTCOME: %s\n", emv_outcome_get_string(r));
+			if (r == EMV_OUTCOME_TRY_AGAIN) {
+				// Return to cardholder application selection/confirmation
+				// See EMV 4.4 Book 4, 11.3
+				continue;
 			}
+			goto emv_exit;
 		}
+		if (!emv_txn.selected_app) {
+			fprintf(stderr, "selected_app unexpectedly NULL\n");
+			goto emv_exit;
+		}
+
+		printf("\nInitiate application processing:\n");
+		r = emv_initiate_application_processing(
+			&emv_txn.ttl,
+			emv_txn.selected_app,
+			&emv_txn.params,
+			&emv_txn.terminal,
+			&emv_txn.icc
+		);
+		if (r < 0) {
+			printf("ERROR: %s\n", emv_error_get_string(r));
+			goto emv_exit;
+		}
+		if (r > 0) {
+			printf("OUTCOME: %s\n", emv_outcome_get_string(r));
+			if (r == EMV_OUTCOME_GPO_NOT_ACCEPTED && !emv_app_list_is_empty(&app_list)) {
+				// Return to cardholder application selection/confirmation
+				// See EMV 4.4 Book 4, 6.3.1
+				emv_app_free(emv_txn.selected_app);
+				continue;
+			}
+			goto emv_exit;
+		}
+
+		// Application processing successfully initiated
+		break;
+
+	} while (true);
+
+	// Application selection has been successful and the application list
+	// is no longer needed.
+	emv_app_list_clear(&app_list);
+
+	// TODO: EMV 4.4 Book 1, 12.4, create 9F06 from 84
+
+	printf("\nRead application data\n");
+	r = emv_read_application_data(&emv_txn.ttl, &emv_txn.icc);
+	if (r < 0) {
+		printf("ERROR: %s\n", emv_error_get_string(r));
+		goto emv_exit;
 	}
+	if (r > 0) {
+		printf("OUTCOME: %s\n", emv_outcome_get_string(r));
+		goto emv_exit;
+	}
+	print_emv_tlv_list(&emv_txn.icc);
 
 	r = pcsc_reader_disconnect(reader);
 	if (r) {

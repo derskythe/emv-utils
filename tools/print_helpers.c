@@ -2,7 +2,7 @@
  * @file print_helpers.c
  * @brief Helper functions for command line output
  *
- * Copyright (c) 2021, 2022 Leon Lynch
+ * Copyright (c) 2021-2024 Leon Lynch
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -53,8 +53,12 @@ void print_buf(const char* buf_name, const void* buf, size_t length)
 	if (buf_name) {
 		printf("%s: ", buf_name);
 	}
-	for (size_t i = 0; i < length; i++) {
-		printf("%02X", ptr[i]);
+	if (buf) {
+		for (size_t i = 0; i < length; i++) {
+			printf("%02X", ptr[i]);
+		}
+	} else {
+		printf("(null)");
 	}
 	printf("\n");
 }
@@ -240,6 +244,72 @@ void print_atr_historical_bytes(const struct iso7816_atr_info_t* atr_info)
 		printf("Failed to parse ATR historical bytes\n");
 		return;
 	}
+}
+
+void print_capdu(const void* c_apdu, size_t c_apdu_len)
+{
+	int r;
+	const uint8_t* ptr = c_apdu;
+	char str[1024];
+
+	if (!c_apdu || !c_apdu_len) {
+		printf("(null)\n");
+		return;
+	}
+
+	for (size_t i = 0; i < c_apdu_len; i++) {
+		printf("%02X", ptr[i]);
+	}
+
+	r = emv_capdu_get_string(
+		c_apdu,
+		c_apdu_len,
+		str,
+		sizeof(str)
+	);
+	if (r) {
+		// Failed to parse C-APDU
+		printf("\n");
+		return;
+	}
+
+	printf(" (%s)\n", str);
+}
+
+void print_rapdu(const void* r_apdu, size_t r_apdu_len)
+{
+	const uint8_t* ptr = r_apdu;
+	char str[1024];
+	const char* s;
+
+	if (!r_apdu || !r_apdu_len) {
+		printf("(null)\n");
+		return;
+	}
+
+	for (size_t i = 0; i < r_apdu_len; i++) {
+		printf("%02X", ptr[i]);
+	}
+
+	if (r_apdu_len < 2) {
+		// No status
+		printf("\n");
+		return;
+	}
+
+	s = iso7816_sw1sw2_get_string(
+		ptr[r_apdu_len - 2],
+		ptr[r_apdu_len - 1],
+		str,
+		sizeof(str)
+	);
+	if (!s || !s[0]) {
+		// No string or empty string
+		printf("\n");
+		return;
+	}
+
+	printf(" (%s)\n", s);
 }
 
 void print_sw1sw2(uint8_t SW1, uint8_t SW2)
@@ -512,8 +582,7 @@ static void print_emv_debug_internal(
 	} else {
 		switch (debug_type) {
 			case EMV_DEBUG_TYPE_TLV:
-				printf("%s: ", str);
-				print_buf(NULL, buf, buf_len);
+				print_buf(str, buf, buf_len);
 				print_emv_buf(buf, buf_len, "  ", 1);
 				return;
 
@@ -521,9 +590,18 @@ static void print_emv_debug_internal(
 				print_atr(buf);
 				return;
 
-			default:
+			case EMV_DEBUG_TYPE_CAPDU:
 				printf("%s: ", str);
-				print_buf(NULL, buf, buf_len);
+				print_capdu(buf, buf_len);
+				return;
+
+			case EMV_DEBUG_TYPE_RAPDU:
+				printf("%s: ", str);
+				print_rapdu(buf, buf_len);
+				return;
+
+			default:
+				print_buf(str, buf, buf_len);
 				return;
 		}
 	}

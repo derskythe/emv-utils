@@ -46,9 +46,25 @@ if (BUILD_TESTING)
 	target_link_libraries(emv_cvmlist_test PRIVATE emv)
 	add_test(emv_cvmlist_test emv_cvmlist_test)
 
+	add_executable(emv_dol_test emv_dol_test.c)
+	target_link_libraries(emv_dol_test PRIVATE print_helpers emv)
+	add_test(emv_dol_test emv_dol_test)
+
 	add_executable(emv_build_candidate_list_test emv_build_candidate_list_test.c)
 	target_link_libraries(emv_build_candidate_list_test PRIVATE emv_cardreader_emul print_helpers emv)
 	add_test(emv_build_candidate_list_test emv_build_candidate_list_test)
+
+	add_executable(emv_select_application_test emv_select_application_test.c)
+	target_link_libraries(emv_select_application_test PRIVATE emv_cardreader_emul print_helpers emv)
+	add_test(emv_select_application_test emv_select_application_test)
+
+	add_executable(emv_initiate_application_processing_test emv_initiate_application_processing_test.c)
+	target_link_libraries(emv_initiate_application_processing_test PRIVATE emv_cardreader_emul print_helpers emv)
+	add_test(emv_initiate_application_processing_test emv_initiate_application_processing_test)
+
+	add_executable(emv_read_application_data_test emv_read_application_data_test.c)
+	target_link_libraries(emv_read_application_data_test PRIVATE emv_cardreader_emul print_helpers emv)
+	add_test(emv_read_application_data_test emv_read_application_data_test)
 
 	add_executable(isocodes_test isocodes_test.c)
 	find_package(Intl)
