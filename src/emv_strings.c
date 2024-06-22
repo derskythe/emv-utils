@@ -67,6 +67,7 @@ static int emv_iad_vsdc_0_1_3_append_string_list(const uint8_t* iad, size_t iad_
 static int emv_iad_vsdc_2_4_append_string_list(const uint8_t* iad, size_t iad_len, struct str_itr_t* itr);
 static const char* emv_mastercard_device_type_get_string(const char* device_type);
 static const char* emv_arc_get_desc(const char* arc);
+static int emv_csu_append_string_list(const uint8_t* csu, size_t csu_len, struct str_itr_t* itr);
 static int emv_capdu_get_data_get_string(const uint8_t* c_apdu, size_t c_apdu_len, char* str, size_t str_len);
 
 int emv_strings_init(const char* isocodes_path, const char* mcc_path)
@@ -322,7 +323,7 @@ int emv_tlv_get_info(
 			return emv_cvm_list_get_string_list(tlv->value, tlv->length, value_str, value_str_len);
 
 		case EMV_TAG_8F_CERTIFICATION_AUTHORITY_PUBLIC_KEY_INDEX:
-			info->tag_name = "Certification Authority Public Key Index";
+			info->tag_name = "Certification Authority Public Key (CAPK) Index";
 			info->tag_desc =
 				"Identifies the certification authority's public key in "
 				"conjunction with the RID";
@@ -711,6 +712,26 @@ int emv_tlv_get_info(
 			info->format = EMV_FORMAT_ANS;
 			return emv_tlv_value_get_string(tlv, info->format, 16, value_str, value_str_len);
 
+		case EMV_TAG_9F13_LAST_ONLINE_ATC_REGISTER:
+			info->tag_name =
+				"Last Online Application Transaction Counter (ATC) Register";
+			info->tag_desc =
+				"Application Transaction Counter (ATC) "
+				"value of the last transaction that went "
+				"online";
+			info->format = EMV_FORMAT_B;
+			return 0;
+
+		case EMV_TAG_9F14_LOWER_CONSECUTIVE_OFFLINE_LIMIT:
+			info->tag_name = "Lower Consecutive Offline Limit";
+			info->tag_desc =
+				"Issuer-specified preference for the maximum "
+				"number of consecutive offline transactions for "
+				"this ICC application allowed in a terminal "
+				"with online capability";
+			info->format = EMV_FORMAT_B;
+			return 0;
+
 		case EMV_TAG_9F15_MCC:
 			info->tag_name = "Merchant Category Code (MCC)";
 			info->tag_desc = "Classifies the type of business being done by "
@@ -727,10 +748,27 @@ int emv_tlv_get_info(
 			info->format = EMV_FORMAT_ANS;
 			return emv_tlv_value_get_string(tlv, info->format, 15, value_str, value_str_len);
 
+		case EMV_TAG_9F17_PIN_TRY_COUNTER:
+			info->tag_name =
+				"Personal Identification Number (PIN) Try Counter";
+			info->tag_desc = "Number of PIN tries remaining";
+			info->format = EMV_FORMAT_B;
+			return 0;
+
 		case EMV_TAG_9F18_ISSUER_SCRIPT_IDENTIFIER:
 			info->tag_name = "Issuer Script Identifier";
 			info->tag_desc = "Identification of the Issuer Script";
 			info->format = EMV_FORMAT_B;
+			return 0;
+
+		case EMV_TAG_9F19_TOKEN_REQUESTOR_ID:
+			info->tag_name = "Token Requestor ID";
+			info->tag_desc =
+				"Uniquely identifies the pairing of the Token "
+				"Requestor with the Token Domain, as defined "
+				"in the EMV Payment Tokenisation "
+				"Framework";
+			info->format = EMV_FORMAT_N;
 			return 0;
 
 		case EMV_TAG_9F1A_TERMINAL_COUNTRY_CODE:
@@ -780,16 +818,6 @@ int emv_tlv_get_info(
 			info->format = EMV_FORMAT_ANS;
 			return emv_tlv_value_get_string(tlv, info->format, 0, value_str, value_str_len);
 
-		case EMV_TAG_9F19_TOKEN_REQUESTOR_ID:
-			info->tag_name = "Token Requestor ID";
-			info->tag_desc =
-				"Uniquely identifies the pairing of the Token "
-				"Requestor with the Token Domain, as defined "
-				"in the EMV Payment Tokenisation "
-				"Framework";
-			info->format = EMV_FORMAT_N;
-			return 0;
-
 		case EMV_TAG_9F20_TRACK2_DISCRETIONARY_DATA:
 			info->tag_name = "Track 2 Discretionary Data";
 			info->tag_desc =
@@ -803,6 +831,37 @@ int emv_tlv_get_info(
 				"Local time that the transaction was authorised";
 			info->format = EMV_FORMAT_N;
 			return emv_time_get_string(tlv->value, tlv->length, value_str, value_str_len);
+
+		case EMV_TAG_9F22_CERTIFICATION_AUTHORITY_PUBLIC_KEY_INDEX:
+			info->tag_name = "Certification Authority Public Key (CAPK) Index";
+			info->tag_desc =
+				"Identifies the certification authority's public key in "
+				"conjunction with the RID";
+			info->format = EMV_FORMAT_B;
+			return 0;
+
+		case EMV_TAG_9F23_UPPER_CONSECUTIVE_OFFLINE_LIMIT:
+			info->tag_name = "Upper Consecutive Offline Limit";
+			info->tag_desc =
+				"Issuer-specified preference for the maximum "
+				"number of consecutive offline transactions for "
+				"this ICC application allowed in a terminal "
+				"without online capability";
+			info->format = EMV_FORMAT_B;
+			return 0;
+
+		case EMV_TAG_9F24_PAYMENT_ACCOUNT_REFERENCE:
+			info->tag_name = "Payment Account Reference (PAR)";
+			info->tag_desc =
+				"A non-financial reference assigned to each "
+				"unique PAN and used to link a Payment "
+				"Account represented by that PAN to affiliated "
+				"Payment Tokens, as defined in the EMV "
+				"Tokenisation Framework. The PAR may be "
+				"assigned in advance of Payment Token "
+				"issuance.";
+			info->format = EMV_FORMAT_AN;
+			return emv_tlv_value_get_string(tlv, info->format, 29, value_str, value_str_len);
 
 		case EMV_TAG_9F25_LAST_4_DIGITS_OF_PAN:
 			info->tag_name = "Last 4 Digits of PAN";
@@ -826,7 +885,13 @@ int emv_tlv_get_info(
 				"Indicates the type of cryptogram and the actions to be "
 				"performed by the terminal";
 			info->format = EMV_FORMAT_B;
-			return 0;
+			if (!tlv->value) {
+				// Cannot use tlv->value[0], even if value_str is NULL.
+				// This is typically for Data Object List (DOL) entries that
+				// have been packed into TLV entries for this function to use.
+				return 0;
+			}
+			return emv_cid_get_string_list(tlv->value[0], value_str, value_str_len);
 
 		case EMV_TAG_9F32_ISSUER_PUBLIC_KEY_EXPONENT:
 			info->tag_name = "Issuer Public Key Exponent";
@@ -3704,6 +3769,85 @@ int emv_tsi_get_string_list(
 	return 0;
 }
 
+int emv_cid_get_string_list(
+	uint8_t cid,
+	char* str,
+	size_t str_len
+)
+{
+	struct str_itr_t itr;
+
+	if (!str || !str_len) {
+		return -1;
+	}
+
+	emv_str_list_init(&itr, str, str_len);
+
+	// Application Cryptogram (AC) type
+	// See EMV 4.4 Book 3, 6.5.5.4, table 15
+	switch (cid & EMV_CID_APPLICATION_CRYPTOGRAM_TYPE_MASK) {
+		case EMV_CID_APPLICATION_CRYPTOGRAM_TYPE_AAC:
+			emv_str_list_add(&itr, "Application Cryptogram (AC) type: Application Authentication Cryptogram (AAC)");
+			break;
+
+		case EMV_CID_APPLICATION_CRYPTOGRAM_TYPE_TC:
+			emv_str_list_add(&itr, "Application Cryptogram (AC) type: Transaction Certificate (TC)");
+			break;
+
+		case EMV_CID_APPLICATION_CRYPTOGRAM_TYPE_ARQC:
+			emv_str_list_add(&itr, "Application Cryptogram (AC) type: Authorisation Request Cryptogram (ARQC)");
+			break;
+
+		default:
+			emv_str_list_add(&itr, "Application Cryptogram (AC) type: RFU");
+			break;
+	}
+
+	// Payment System-specific cryptogram
+	// See EMV 4.4 Book 3, 6.5.5.4, table 15
+	if (cid & EMV_CID_PAYMENT_SYSTEM_SPECIFIC_CRYPTOGRAM_MASK) {
+		emv_str_list_add(&itr,
+			"Payment System-specific cryptogram: 0x%02X",
+			cid & EMV_CID_PAYMENT_SYSTEM_SPECIFIC_CRYPTOGRAM_MASK
+		);
+	}
+
+	// Advice required
+	// See EMV 4.4 Book 3, 6.5.5.4, table 15
+	if (cid & EMV_CID_ADVICE_REQUIRED) {
+		emv_str_list_add(&itr, "Advice required");
+	} else if (cid & EMV_CID_ADVICE_CODE_MASK) {
+		// Indicate that advice is not required although it is provided
+		emv_str_list_add(&itr, "No advice required");
+	}
+
+	// Reason/advice code
+	// See EMV 4.4 Book 3, 6.5.5.4, table 15
+	switch (cid & EMV_CID_ADVICE_CODE_MASK) {
+		case EMV_CID_ADVICE_NO_INFO:
+			// No information given; ignore
+			break;
+
+		case EMV_CID_ADVICE_SERVICE_NOT_ALLOWED:
+			emv_str_list_add(&itr, "Advice: Service not allowed");
+			break;
+
+		case EMV_CID_ADVICE_PIN_TRY_LIMIT_EXCEEDED:
+			emv_str_list_add(&itr, "Advice: PIN Try Limit exceeded");
+			break;
+
+		case EMV_CID_ADVICE_ISSUER_AUTHENTICATION_FAILED:
+			emv_str_list_add(&itr, "Advice: Issuer authentication failed");
+			break;
+
+		default:
+			emv_str_list_add(&itr, "Advice: RFU");
+			break;
+	}
+
+	return 0;
+}
+
 static int emv_iad_ccd_append_string_list(
 	const uint8_t* iad,
 	size_t iad_len,
@@ -5632,6 +5776,79 @@ int emv_auth_response_code_get_string(
 	return 0;
 }
 
+static int emv_csu_append_string_list(
+	const uint8_t* csu,
+	size_t csu_len,
+	struct str_itr_t* itr
+)
+{
+	if (!csu) {
+		return -1;
+	}
+	if (csu_len != 4) {
+		// See EMV 4.4 Book 3, Annex C10
+		return -2;
+	}
+
+	// Card Status Update (CSU) byte 1
+	// See EMV 4.4 Book 3, Annex C10
+	if (csu[0] & EMV_CSU_BYTE1_PROPRIETARY_AUTHENTICATION_DATA_INCLUDED) {
+		emv_str_list_add(itr, "Card Status Update (CSU): Proprietary Authentication Data Included");
+	}
+	if (csu[0] & EMV_CSU_BYTE1_PIN_TRY_COUNTER_MASK) {
+		emv_str_list_add(itr, "Card Status Update (CSU): PIN Try Counter = %u", csu[0] & EMV_CSU_BYTE1_PIN_TRY_COUNTER_MASK);
+	}
+
+	// Card Status Update (CSU) byte 2
+	// See EMV 4.4 Book 3, Annex C10
+	if (csu[1] & EMV_CSU_BYTE2_ISSUER_APPROVES_ONLINE_TRANSACTION) {
+		emv_str_list_add(itr, "Card Status Update (CSU): Issuer Approves Online Transaction");
+	}
+	if (csu[1] & EMV_CSU_BYTE2_CARD_BLOCK) {
+		emv_str_list_add(itr, "Card Status Update (CSU): Card Block");
+	}
+	if (csu[1] & EMV_CSU_BYTE2_APPLICATION_BLOCK) {
+		emv_str_list_add(itr, "Card Status Update (CSU): Application Block");
+	}
+	if (csu[1] & EMV_CSU_BYTE2_UPDATE_PIN_TRY_COUNTER) {
+		emv_str_list_add(itr, "Card Status Update (CSU): Update PIN Try Counter");
+	}
+	if (csu[1] & EMV_CSU_BYTE2_GO_ONLINE_ON_NEXT_TXN) {
+		emv_str_list_add(itr, "Card Status Update (CSU): Set Go Online on Next Transaction");
+	}
+	if (csu[1] & EMV_CSU_BYTE2_CREATED_BY_PROXY_FOR_ISSUER) {
+		emv_str_list_add(itr, "Card Status Update (CSU): CSU Created by Proxy for the Issuer");
+	}
+	if ((csu[1] & EMV_CSU_BYTE2_UPDATE_COUNTERS_MASK) == EMV_CSU_BYTE2_UPDATE_COUNTERS_DO_NOT_UPDATE) {
+		emv_str_list_add(itr, "Card Status Update (CSU): Do Not Update Offline Counters");
+	}
+	if ((csu[1] & EMV_CSU_BYTE2_UPDATE_COUNTERS_MASK) == EMV_CSU_BYTE2_UPDATE_COUNTERS_UPPER_OFFLINE_LIMIT) {
+		emv_str_list_add(itr, "ard Status Update (CSU): Set Offline Counters to Upper Offline Limits");
+	}
+	if ((csu[1] & EMV_CSU_BYTE2_UPDATE_COUNTERS_MASK) == EMV_CSU_BYTE2_UPDATE_COUNTERS_RESET) {
+		emv_str_list_add(itr, "Card Status Update (CSU): Reset Offline Counters to Zero");
+	}
+	if ((csu[1] & EMV_CSU_BYTE2_UPDATE_COUNTERS_MASK) == EMV_CSU_BYTE2_UPDATE_COUNTERS_ADD_TO_OFFLINE) {
+		emv_str_list_add(itr, "Card Status Update (CSU): Add Transaction to Offline Counter");
+	}
+
+	// Card Status Update (CSU) byte 4
+	// See EMV 4.4 Book 3, Annex C10
+	if (csu[3] & EMV_CSU_BYTE4_ISSUER_DISCRETIONARY) {
+		emv_str_list_add(itr, "Card Status Update (CSU): Issuer Discretionary 0x%02X", csu[3]);
+	}
+
+	// Card Status Update (CSU) RFU bits
+	// See EMV 4.4 Book 3, Annex C10
+	if (csu[0] & EMV_CSU_BYTE1_RFU ||
+		csu[2] & EMV_CSU_BYTE3_RFU
+	) {
+		emv_str_list_add(itr, "Card Status Update (CSU): RFU");
+	}
+
+	return 0;
+}
+
 int emv_issuer_auth_data_get_string_list(
 	const uint8_t* iad,
 	size_t iad_len,
@@ -5687,18 +5904,22 @@ int emv_issuer_auth_data_get_string_list(
 			return 0;
 		}
 	}
-	if ((iad[4] & 0x70) == 0 && iad[6] == 0) { // Check for Visa CSU RFU bits
-		// Likely Visa CVN18 or Visa CVN'22'
-		// 4-byte ARPC followed by CSU and optional Proprietary Authentication Data
+	// Check for Card Status Update (CSU) RFU bits
+	if ((iad[4] & EMV_CSU_BYTE1_RFU) == 0 &&
+		(iad[6] & EMV_CSU_BYTE3_RFU) == 0
+	) {
+		// Likely CCD, Visa CVN18 or Visa CVN'22'
+		// 4-byte ARPC followed by 4-byte CSU and optional Proprietary Authentication Data
+		// See EMV 4.4 Book 2, 8.2.2
+		// See EMV 4.4 Book 3, Annex C10
 		// See Visa Contactless Payment Specification (VCPS) Supplemental Requirements, version 2.2, January 2016, Annex D
 		emv_str_list_add(&itr, "Authorisation Response Cryptogram (ARPC): %02X%02X%02X%02X",
 			iad[0], iad[1], iad[2], iad[3]
 		);
-		emv_str_list_add(&itr, "Card Status Update (CSU): %02X%02X%02X%02X",
-			iad[4], iad[5], iad[6], iad[7]
-		);
+		emv_csu_append_string_list(iad + 4, 4, &itr);
+
 		if (iad_len > 8) { // If extra data after CSU
-			if ((iad[4] & 0x80) == 0x80) { // CSU indicates Proprietary Authentication Data
+			if ((iad[4] & EMV_CSU_BYTE1_PROPRIETARY_AUTHENTICATION_DATA_INCLUDED)) { // CSU indicates Proprietary Authentication Data
 				emv_str_list_add(&itr, "Proprietary Authentication Data: %zu bytes", iad_len - 8);
 			} else if (iad_len == 10) {
 				// Two extra bytes but not Proprietary Authentication Data

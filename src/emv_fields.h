@@ -39,8 +39,8 @@ __BEGIN_DECLS
 
 // Application Selection Indicator
 // See EMV 4.4 Book 1, 12.3.1
-#define EMV_ASI_EXACT_MATCH                                     (0x00)
-#define EMV_ASI_PARTIAL_MATCH                                   (0x01)
+#define EMV_ASI_EXACT_MATCH                                     (0x00) ///< Application Selection Indicator: Exact match required
+#define EMV_ASI_PARTIAL_MATCH                                   (0x01) ///< Application Selection Indicator: Partial match allowed
 
 // Transaction Type (field 9C)
 // See ISO 8583:1987, 4.3.8
@@ -161,7 +161,7 @@ __BEGIN_DECLS
 // See EMV 4.4 Book 1, 12.5
 // See https://www.emvco.com/registered-ids/
 #define EMV_ASRPD_ECSG                                          (0x0001) ///< European Cards Stakeholders Group
-#define EMV_ASRPD_TCEA                                          (0x0002) ///< Technical Cooperation ep2 Association
+#define EMV_ASRPD_TCEA                                          (0x0003) ///< Technical Cooperation ep2 Association
 
 // Application Interchange Profile (field 82) byte 1
 // See EMV 4.4 Book 3, Annex C1, Table 41
@@ -329,6 +329,22 @@ __BEGIN_DECLS
 // See EMV 4.4 Book 3, Annex C6, Table 47
 #define EMV_TSI_BYTE2_RFU                                       (0xFF) ///< Transaction Status Information: RFU
 
+// Cryptogram Information Data (field 9F27)
+// See EMV 4.4 Book 3, 6.5.5.4, table 15
+#define EMV_CID_APPLICATION_CRYPTOGRAM_TYPE_MASK                (0xC0) ///< Cryptogram Information Data mask for Application Cryptogram (AC) type
+#define EMV_CID_APPLICATION_CRYPTOGRAM_TYPE_AAC                 (0x00) ///< Application Cryptogram (AC) type: Application Authentication Cryptogram (AAC)
+#define EMV_CID_APPLICATION_CRYPTOGRAM_TYPE_TC                  (0x40) ///< Application Cryptogram (AC) type: Transaction Certificate (TC)
+#define EMV_CID_APPLICATION_CRYPTOGRAM_TYPE_ARQC                (0x80) ///< Application Cryptogram (AC) type: Authorisation Request Cryptogram (ARQC)
+#define EMV_CID_APPLICATION_CRYPTOGRAM_TYPE_RFU                 (0xC0) ///< Application Cryptogram (AC) type: RFU
+#define EMV_CID_PAYMENT_SYSTEM_SPECIFIC_CRYPTOGRAM_MASK         (0x30) ///< Cryptogram Information Data: Payment System-specific cryptogram
+#define EMV_CID_ADVICE_REQUIRED                                 (0x08) ///< Cryptogram Information Data: Advice required
+#define EMV_CID_ADVICE_CODE_MASK                                (0x07) ///< Cryptogram Information Data mask reason/advice code
+#define EMV_CID_ADVICE_NO_INFO                                  (0x00) ///< Advice: No information given
+#define EMV_CID_ADVICE_SERVICE_NOT_ALLOWED                      (0x01) ///< Advice: Service not allowed
+#define EMV_CID_ADVICE_PIN_TRY_LIMIT_EXCEEDED                   (0x02) ///< Advice: PIN Try Limit exceeded
+#define EMV_CID_ADVICE_ISSUER_AUTHENTICATION_FAILED             (0x03) ///< Advice: Issuer authentication failed
+#define EMV_CID_ADVICE_RFU                                      (0x04) ///< Advice: RFU
+
 /// Issuer Application Data (field 9F10) formats
 enum emv_iad_format_t {
 	EMV_IAD_FORMAT_INVALID = -1, ///< Invalid IAD format
@@ -495,7 +511,7 @@ enum emv_iad_format_t {
 
 // Card Verification Results (CVR) byte 1 for Visa Smart Debit/Credit (VSDC) IAD Format 2/4 applications
 // NOTE: From unverified internet sources
-#define EMV_IAD_VSDC_CVR_BYTE1_CVM_ENTITY_MASK                  (0xF0) ///< Card Verification Results (CVR) mask CVM Verifying Entity
+#define EMV_IAD_VSDC_CVR_BYTE1_CVM_ENTITY_MASK                  (0xF0) ///< Card Verification Results (CVR) mask for CVM Verifying Entity
 #define EMV_IAD_VSDC_CVR_BYTE1_CVM_ENTITY_NONE                  (0x00) ///< Card Verification Results (CVR): No CDCVM
 #define EMV_IAD_VSDC_CVR_BYTE1_CVM_ENTITY_VMPA                  (0x10) ///< Card Verification Results (CVR): Visa Mobile Payment Application (VMPA)
 #define EMV_IAD_VSDC_CVR_BYTE1_CVM_ENTITY_MG                    (0x20) ///< Card Verification Results (CVR): MG
@@ -505,7 +521,7 @@ enum emv_iad_format_t {
 #define EMV_IAD_VSDC_CVR_BYTE1_CVM_ENTITY_TERMINAL              (0x60) ///< Card Verification Results (CVR): Terminal
 #define EMV_IAD_VSDC_CVR_BYTE1_CVM_ENTITY_CLOUD                 (0x70) ///< Card Verification Results (CVR): Verified in the cloud
 #define EMV_IAD_VSDC_CVR_BYTE1_CVM_ENTITY_MOBILE_DEVICE_OS      (0x80) ///< Card Verification Results (CVR): Verified by the mobile device OS
-#define EMV_IAD_VSDC_CVR_BYTE1_CVM_TYPE_MASK                    (0x0F) ///< Card Verification Results (CVR) mask CVM Verified Type
+#define EMV_IAD_VSDC_CVR_BYTE1_CVM_TYPE_MASK                    (0x0F) ///< Card Verification Results (CVR) mask for CVM Verified Type
 #define EMV_IAD_VSDC_CVR_BYTE1_CVM_TYPE_NONE                    (0x00) ///< Card Verification Results (CVR): No CDCVM
 #define EMV_IAD_VSDC_CVR_BYTE1_CVM_TYPE_PASSCODE                (0x01) ///< Card Verification Results (CVR): Passcode
 #define EMV_IAD_VSDC_CVR_BYTE1_CVM_TYPE_BIOMETRIC_FINGER        (0x02) ///< Card Verification Results (CVR): Finger biometric
@@ -743,6 +759,34 @@ enum emv_iad_format_t {
 #define AMEX_ENH_CL_READER_CAPS_KERNEL_VERSION_24_26            (0x02) ///< Enhanced Contactless Reader Capabilities: C-4 kernel version 2.4 - 2.6
 #define AMEX_ENH_CL_READER_CAPS_KERNEL_VERSION_27               (0x03) ///< Enhanced Contactless Reader Capabilities: C-4 kernel version 2.7
 
+// Card Status Update (CSU) byte 1
+// See EMV 4.4 Book 3, Annex C10
+#define EMV_CSU_BYTE1_PROPRIETARY_AUTHENTICATION_DATA_INCLUDED  (0x80) ///< Card Status Update (CSU): Proprietary Authentication Data Included
+#define EMV_CSU_BYTE1_RFU                                       (0x70) ///< Card Status Update (CSU): RFU
+#define EMV_CSU_BYTE1_PIN_TRY_COUNTER_MASK                      (0x0F) ///< Card Status Update (CSU) mask for PIN Try Counter
+
+// Card Status Update (CSU) byte 2
+// See EMV 4.4 Book 3, Annex C10
+#define EMV_CSU_BYTE2_ISSUER_APPROVES_ONLINE_TRANSACTION        (0x80) ///< Card Status Update (CSU): Issuer Approves Online Transaction
+#define EMV_CSU_BYTE2_CARD_BLOCK                                (0x40) ///< Card Status Update (CSU): Card Block
+#define EMV_CSU_BYTE2_APPLICATION_BLOCK                         (0x20) ///< Card Status Update (CSU): Application Block
+#define EMV_CSU_BYTE2_UPDATE_PIN_TRY_COUNTER                    (0x10) ///< Card Status Update (CSU): Update PIN Try Counter
+#define EMV_CSU_BYTE2_GO_ONLINE_ON_NEXT_TXN                     (0x08) ///< Card Status Update (CSU): Set Go Online on Next Transaction
+#define EMV_CSU_BYTE2_CREATED_BY_PROXY_FOR_ISSUER               (0x04) ///< Card Status Update (CSU): CSU Created by Proxy for the Issuer
+#define EMV_CSU_BYTE2_UPDATE_COUNTERS_MASK                      (0x03) ///< Card Status Update (CSU) mask for Update Counters
+#define EMV_CSU_BYTE2_UPDATE_COUNTERS_DO_NOT_UPDATE             (0x00) ///< Card Status Update (CSU): Do Not Update Offline Counters
+#define EMV_CSU_BYTE2_UPDATE_COUNTERS_UPPER_OFFLINE_LIMIT       (0x01) ///< Card Status Update (CSU): Set Offline Counters to Upper Offline Limits
+#define EMV_CSU_BYTE2_UPDATE_COUNTERS_RESET                     (0x02) ///< Card Status Update (CSU): Reset Offline Counters to Zero
+#define EMV_CSU_BYTE2_UPDATE_COUNTERS_ADD_TO_OFFLINE            (0x03) ///< Card Status Update (CSU): Add Transaction to Offline Counter
+
+// Card Status Update (CSU) byte 3
+// See EMV 4.4 Book 3, Annex C10
+#define EMV_CSU_BYTE3_RFU                                       (0xFF) ///< Card Status Update (CSU): RFU
+
+// Card Status Update (CSU) byte 4
+// See EMV 4.4 Book 3, Annex C10
+#define EMV_CSU_BYTE4_ISSUER_DISCRETIONARY                      (0xFF) ///< Card Status Update (CSU): Issuer Discretionary
+
 /// EMV card schemes
 enum emv_card_scheme_t {
 	EMV_CARD_SCHEME_UNKNOWN = 0, ///< Unknown card scheme
@@ -897,7 +941,7 @@ struct emv_cv_rule_t {
 };
 
 /**
- * Initialize Cardholder Verification Method (CVM) List amounts and iterator
+ * Initialise Cardholder Verification Method (CVM) List amounts and iterator
  * @param cvmlist Cardholder Verification Method (CVM) List field
  * @param cvmlist_len Length of Cardholder Verification Method (CVM) List field
  * @param amounts Cardholder Verification Method (CVM) List amounts output

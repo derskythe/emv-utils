@@ -45,6 +45,22 @@ else()
 	set(PCSC_LIBRARIES PCSCLite::PCSCLite)
 endif()
 
+# Check for headers that provide ntohl/htonl and friends
+include(CheckIncludeFile)
+CHECK_INCLUDE_FILE(
+	arpa/inet.h
+	HAVE_ARPA_INET_H
+)
+CHECK_INCLUDE_FILE(
+	winsock.h
+	HAVE_WINSOCK_H
+)
+if(NOT HAVE_ARPA_INET_H AND NOT HAVE_WINSOCK_H)
+	if(BUILD_EMV_TOOL)
+		message(FATAL_ERROR "Failed to find either arpa/inet.h or winsock.h. This is required to build emv-tool.")
+	endif()
+endif()
+
 include(GNUInstallDirs) # Provides CMAKE_INSTALL_* variables and good defaults for install()
 
 # Print helpers object library
@@ -74,9 +90,21 @@ endif()
 # EMV processing command line tool
 if(BUILD_EMV_TOOL)
 	if(PCSCLite_FOUND)
-		set_source_files_properties(../src/pcsc.c
-			PROPERTIES
-				COMPILE_DEFINITIONS USE_PCSCLITE
+		set_property(
+			SOURCE ../src/pcsc.c
+			APPEND PROPERTY COMPILE_DEFINITIONS USE_PCSCLITE
+		)
+	endif()
+	if(HAVE_ARPA_INET_H)
+		set_property(
+			SOURCE ../src/pcsc.c
+			APPEND PROPERTY COMPILE_DEFINITIONS HAVE_ARPA_INET_H
+		)
+	endif()
+	if(HAVE_WINSOCK_H)
+		set_property(
+			SOURCE ../src/pcsc.c
+			APPEND PROPERTY COMPILE_DEFINITIONS HAVE_WINSOCK_H
 		)
 	endif()
 
@@ -87,6 +115,9 @@ if(BUILD_EMV_TOOL)
 	endif()
 	if(PCSC_LIBRARIES)
 		target_link_libraries(emv-tool PRIVATE ${PCSC_LIBRARIES})
+	endif()
+	if(HAVE_WINSOCK_H AND NOT HAVE_ARPA_INET_H)
+		target_link_libraries(emv-tool PRIVATE ws2_32)
 	endif()
 
 	install(
@@ -611,7 +642,8 @@ if(TARGET emv-decode AND BUILD_TESTING)
 		"8A \\| Authorisation Response Code : \\[2\\] 30 30 \"00 - Approved or completed successfully\"[\r\n]"
 		"91 \\| Issuer Authentication Data : \\[8\\] A5 84 F9 49 00 82 00 00[\r\n]"
 		"  - Authorisation Response Cryptogram \\(ARPC\\): A584F949[\r\n]"
-		"  - Card Status Update \\(CSU\\): 00820000[\r\n]"
+		"  - Card Status Update \\(CSU\\): Issuer Approves Online Transaction[\r\n]"
+		"  - Card Status Update \\(CSU\\): Reset Offline Counters to Zero[\r\n]"
 	)
 	set_tests_properties(emv_decode_issuer_response_test2
 		PROPERTIES
@@ -664,6 +696,50 @@ if(TARGET emv-decode AND BUILD_TESTING)
 	set_tests_properties(emv_decode_issuer_response_test5
 		PROPERTIES
 			PASS_REGULAR_EXPRESSION ${emv_decode_issuer_response_test5_regex}
+	)
+
+	add_test(NAME emv_decode_9F27_test1
+		COMMAND emv-decode --tlv 9F270160
+			--mcc-json ${MCC_JSON_BUILD_PATH}
+	)
+	string(CONCAT emv_decode_9F27_test1_regex
+		"^9F27 \\| Cryptogram Information Data : \\[1\\] 60[\r\n]"
+		"  - Application Cryptogram \\(AC\\) type: Transaction Certificate \\(TC\\)[\r\n]"
+		"  - Payment System-specific cryptogram: 0x20[\r\n]"
+	)
+	set_tests_properties(emv_decode_9F27_test1
+		PROPERTIES
+			PASS_REGULAR_EXPRESSION ${emv_decode_9F27_test1_regex}
+	)
+
+	add_test(NAME emv_decode_9F27_test2
+		COMMAND emv-decode --tlv 9F270101
+			--mcc-json ${MCC_JSON_BUILD_PATH}
+	)
+	string(CONCAT emv_decode_9F27_test2_regex
+		"^9F27 \\| Cryptogram Information Data : \\[1\\] 01[\r\n]"
+		"  - Application Cryptogram \\(AC\\) type: Application Authentication Cryptogram \\(AAC\\)[\r\n]"
+		"  - No advice required[\r\n]"
+		"  - Advice: Service not allowed[\r\n]"
+	)
+	set_tests_properties(emv_decode_9F27_test2
+		PROPERTIES
+			PASS_REGULAR_EXPRESSION ${emv_decode_9F27_test2_regex}
+	)
+
+	add_test(NAME emv_decode_9F27_test3
+		COMMAND emv-decode --tlv 9F27018A
+			--mcc-json ${MCC_JSON_BUILD_PATH}
+	)
+	string(CONCAT emv_decode_9F27_test3_regex
+		"^9F27 \\| Cryptogram Information Data : \\[1\\] 8A[\r\n]"
+		"  - Application Cryptogram \\(AC\\) type: Authorisation Request Cryptogram \\(ARQC\\)[\r\n]"
+		"  - Advice required[\r\n]"
+		"  - Advice: PIN Try Limit exceeded[\r\n]"
+	)
+	set_tests_properties(emv_decode_9F27_test3
+		PROPERTIES
+			PASS_REGULAR_EXPRESSION ${emv_decode_9F27_test3_regex}
 	)
 
 	if(WIN32)

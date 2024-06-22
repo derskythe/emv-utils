@@ -119,7 +119,7 @@ struct emv_tlv_info_t {
 };
 
 /**
- * Initialize EMV strings. This will load ISO 3166, ISO 4217,
+ * Initialise EMV strings. This will load ISO 3166, ISO 4217,
  * and ISO 639 strings from the iso-codes package.
  *
  * @param isocodes_path Override directory path where iso-codes JSON files can
@@ -565,6 +565,20 @@ int emv_tvr_get_string_list(
 int emv_tsi_get_string_list(
 	const uint8_t* tsi,
 	size_t tsi_len,
+	char* str,
+	size_t str_len
+);
+
+/**
+ * Stringify Cryptogram Information Data (field 9F27)
+ * @note Strings in output buffer are delimited using "\n", including the last string
+ * @param cid Cryptogram Information Data (field 9F27)
+ * @param str String buffer output
+ * @param str_len Length of string buffer in bytes
+ * @return Zero for success. Less than zero for internal error. Greater than zero for parse error.
+ */
+int emv_cid_get_string_list(
+	uint8_t cid,
 	char* str,
 	size_t str_len
 );
