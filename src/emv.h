@@ -22,8 +22,8 @@
 #ifndef EMV_H
 #define EMV_H
 
-#include <sys/cdefs.h>
 #include <stddef.h>
+#include <sys/cdefs.h>
 
 __BEGIN_DECLS
 
@@ -39,8 +39,8 @@ struct emv_app_t;
  * the API functions in this header, and must have values less than zero.
  */
 enum emv_error_t {
-	EMV_ERROR_INTERNAL = -1, ///< Internal error
-	EMV_ERROR_INVALID_PARAMETER = -2, ///< Invalid function parameter
+  EMV_ERROR_INTERNAL = -1,          ///< Internal error
+  EMV_ERROR_INVALID_PARAMETER = -2, ///< Invalid function parameter
 };
 
 /**
@@ -49,25 +49,27 @@ enum emv_error_t {
  * greater than zero.
  */
 enum emv_outcome_t {
-	EMV_OUTCOME_CARD_ERROR = 1, ///< Malfunction of the card or non-conformance to Answer To Reset (ATR)
-	EMV_OUTCOME_CARD_BLOCKED = 2, ///< Card blocked
-	EMV_OUTCOME_NOT_ACCEPTED = 3, ///< Card not accepted or no supported applications
-	EMV_OUTCOME_TRY_AGAIN = 4, ///< Try again by selecting a different application
-	EMV_OUTCOME_GPO_NOT_ACCEPTED = 5, ///< Processing conditions not accepted
+  EMV_OUTCOME_CARD_ERROR = 1, ///< Malfunction of the card or non-conformance to
+                              ///< Answer To Reset (ATR)
+  EMV_OUTCOME_CARD_BLOCKED = 2, ///< Card blocked
+  EMV_OUTCOME_NOT_ACCEPTED =
+      3,                     ///< Card not accepted or no supported applications
+  EMV_OUTCOME_TRY_AGAIN = 4, ///< Try again by selecting a different application
+  EMV_OUTCOME_GPO_NOT_ACCEPTED = 5, ///< Processing conditions not accepted
 };
 
 /**
  * Retrieve EMV library version string
  * @return Pointer to null-terminated string. Do not free.
  */
-const char* emv_lib_version_string(void);
+const char *emv_lib_version_string(void);
 
 /**
  * Retrieve string associated with error value
  * @param error Error value. Must be less than zero.
  * @return Pointer to null-terminated string. Do not free.
  */
-const char* emv_error_get_string(enum emv_error_t error);
+const char *emv_error_get_string(enum emv_error_t error);
 
 /**
  * Retrieve string associated with outcome value
@@ -77,7 +79,7 @@ const char* emv_error_get_string(enum emv_error_t error);
  * @param outcome Outcome value. Must be greater than zero.
  * @return Pointer to null-terminated string. Do not free.
  */
-const char* emv_outcome_get_string(enum emv_outcome_t outcome);
+const char *emv_outcome_get_string(enum emv_outcome_t outcome);
 
 /**
  * Parse the ISO 7816 Answer To Reset (ATR) message and determine whether the
@@ -91,7 +93,7 @@ const char* emv_outcome_get_string(enum emv_outcome_t outcome);
  * @return Less than zero for errors. See @ref emv_error_t
  * @return Greater than zero for EMV processing outcome. See @ref emv_outcome_t
  */
-int emv_atr_parse(const void* atr, size_t atr_len);
+int emv_atr_parse(const void *atr, size_t atr_len);
 
 /**
  * Build candidate application list using Payment System Environment (PSE) or
@@ -107,11 +109,9 @@ int emv_atr_parse(const void* atr, size_t atr_len);
  * @return Less than zero for errors. See @ref emv_error_t
  * @return Greater than zero for EMV processing outcome. See @ref emv_outcome_t
  */
-int emv_build_candidate_list(
-	struct emv_ttl_t* ttl,
-	const struct emv_tlv_list_t* supported_aids,
-	struct emv_app_list_t* app_list
-);
+int emv_build_candidate_list(struct emv_ttl_t *ttl,
+                             const struct emv_tlv_list_t *supported_aids,
+                             struct emv_app_list_t *app_list);
 
 /**
  * Select EMV application by index from the candidate application list. The
@@ -126,18 +126,16 @@ int emv_build_candidate_list(
  * @param ttl EMV Terminal Transport Layer context
  * @param app_list Candidate application list
  * @param index Index (starting from zero) of EMV application to select
- * @param selected_app Selected EMV application output. Use @ref emv_app_free() to free memory.
+ * @param selected_app Selected EMV application output. Use @ref emv_app_free()
+ * to free memory.
  *
  * @return Zero for success
  * @return Less than zero for errors. See @ref emv_error_t
  * @return Greater than zero for EMV processing outcome. See @ref emv_outcome_t
  */
-int emv_select_application(
-	struct emv_ttl_t* ttl,
-	struct emv_app_list_t* app_list,
-	unsigned int index,
-	struct emv_app_t** selected_app
-);
+int emv_select_application(struct emv_ttl_t *ttl,
+                           struct emv_app_list_t *app_list, unsigned int index,
+                           struct emv_app_t **selected_app);
 
 /**
  * Initiate EMV application processing by assessing the Processing Options
@@ -158,13 +156,11 @@ int emv_select_application(
  * @return Less than zero for errors. See @ref emv_error_t
  * @return Greater than zero for EMV processing outcome. See @ref emv_outcome_t
  */
-int emv_initiate_application_processing(
-	struct emv_ttl_t* ttl,
-	struct emv_app_t* selected_app,
-	const struct emv_tlv_list_t* source1,
-	const struct emv_tlv_list_t* source2,
-	struct emv_tlv_list_t* icc
-);
+int emv_initiate_application_processing(struct emv_ttl_t *ttl,
+                                        struct emv_app_t *selected_app,
+                                        const struct emv_tlv_list_t *source1,
+                                        const struct emv_tlv_list_t *source2,
+                                        struct emv_tlv_list_t *icc);
 
 /**
  * Read EMV application data by performing READ RECORD for all records
@@ -182,10 +178,8 @@ int emv_initiate_application_processing(
  * @return Less than zero for errors. See @ref emv_error_t
  * @return Greater than zero for EMV processing outcome. See @ref emv_outcome_t
  */
-int emv_read_application_data(
-	struct emv_ttl_t* ttl,
-	struct emv_tlv_list_t* icc
-);
+int emv_read_application_data(struct emv_ttl_t *ttl,
+                              struct emv_tlv_list_t *icc);
 
 __END_DECLS
 

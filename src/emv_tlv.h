@@ -24,29 +24,30 @@
 
 #include <iso8825_ber.h>
 
-#include <sys/cdefs.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
+#include <sys/cdefs.h>
 
 __BEGIN_DECLS
 
 /**
  * EMV TLV field
- * @note The first 4 members of this structure are intentionally identical to @ref iso8825_tlv_t
+ * @note The first 4 members of this structure are intentionally identical to
+ * @ref iso8825_tlv_t
  */
 struct emv_tlv_t {
-	union {
-		struct {
-			unsigned int tag;                   ///< EMV tag
-			unsigned int length;                ///< Length of @c value in bytes
-			uint8_t* value;                     ///< EMV value buffer
-			uint8_t flags;                      ///< EMV field specific flags, eg ASI for AID
-		};
-		struct iso8825_tlv_t ber;               ///< Alternative BER access to EMV TLV field
-	};
+  union {
+    struct {
+      unsigned int tag;    ///< EMV tag
+      unsigned int length; ///< Length of @c value in bytes
+      uint8_t *value;      ///< EMV value buffer
+      uint8_t flags;       ///< EMV field specific flags, eg ASI for AID
+    };
+    struct iso8825_tlv_t ber; ///< Alternative BER access to EMV TLV field
+  };
 
-	struct emv_tlv_t* next;                     ///< Next EMV TLV field in list
+  struct emv_tlv_t *next; ///< Next EMV TLV field in list
 };
 
 /**
@@ -54,36 +55,37 @@ struct emv_tlv_t {
  * @note Use the various @c emv_tlv_list_*() functions to manipulate the list
  */
 struct emv_tlv_list_t {
-	struct emv_tlv_t* front;                    ///< Pointer to front of list
-	struct emv_tlv_t* back;                     ///< Pointer to end of list
+  struct emv_tlv_t *front; ///< Pointer to front of list
+  struct emv_tlv_t *back;  ///< Pointer to end of list
 };
 
 /// Static initialiser for @ref emv_tlv_t
-#define EMV_TLV_INIT ((struct emv_tlv_t){ 0, 0, NULL, NULL })
+#define EMV_TLV_INIT ((struct emv_tlv_t){0, 0, NULL, NULL})
 
 /// Static initialiser for @ref emv_tlv_list_t
-#define EMV_TLV_LIST_INIT ((struct emv_tlv_list_t){ NULL, NULL })
+#define EMV_TLV_LIST_INIT ((struct emv_tlv_list_t){NULL, NULL})
 
 /**
  * Free EMV TLV field
- * @note This function should not be used to free EMV TLV fields that are elements of a list
+ * @note This function should not be used to free EMV TLV fields that are
+ * elements of a list
  * @param tlv EMV TLV field to free
  * @return Zero for success. Non-zero if it is unsafe to free the EMV TLV field.
  */
-int emv_tlv_free(struct emv_tlv_t* tlv);
+int emv_tlv_free(struct emv_tlv_t *tlv);
 
 /**
  * Determine whether EMV TLV list is empty
  * @return Boolean indicating whether EMV TLV list is empty
  */
-bool emv_tlv_list_is_empty(const struct emv_tlv_list_t* list);
+bool emv_tlv_list_is_empty(const struct emv_tlv_list_t *list);
 
 /**
  * Clear EMV TLV list
  * @note This function will call @ref emv_tlv_free() for every element
  * @param list EMV TLV list object
  */
-void emv_tlv_list_clear(struct emv_tlv_list_t* list);
+void emv_tlv_list_clear(struct emv_tlv_list_t *list);
 
 /**
  * Push EMV TLV field on to the back of an EMV TLV list
@@ -95,20 +97,15 @@ void emv_tlv_list_clear(struct emv_tlv_list_t* list);
  * @param flags EMV field specific flags
  * @return Zero for success. Less than zero for error.
  */
-int emv_tlv_list_push(
-	struct emv_tlv_list_t* list,
-	unsigned int tag,
-	unsigned int length,
-	const uint8_t* value,
-	uint8_t flags
-);
+int emv_tlv_list_push(struct emv_tlv_list_t *list, unsigned int tag,
+                      unsigned int length, const uint8_t *value, uint8_t flags);
 
 /**
  * Pop EMV TLV field from the front of an EMV TLV list
  * @param list EMV TLV list
  * @return EMV TLV field. Use @ref emv_tlv_free() to free memory.
  */
-struct emv_tlv_t* emv_tlv_list_pop(struct emv_tlv_list_t* list);
+struct emv_tlv_t *emv_tlv_list_pop(struct emv_tlv_list_t *list);
 
 /**
  * Find EMV TLV field in an EMV TLV list
@@ -116,7 +113,8 @@ struct emv_tlv_t* emv_tlv_list_pop(struct emv_tlv_list_t* list);
  * @param tag EMV tag to find
  * @return EMV TLV field. Do NOT free. NULL if not found.
  */
-struct emv_tlv_t* emv_tlv_list_find(struct emv_tlv_list_t* list, unsigned int tag);
+struct emv_tlv_t *emv_tlv_list_find(struct emv_tlv_list_t *list,
+                                    unsigned int tag);
 
 /**
  * Const alternative for @ref emv_tlv_list_find
@@ -127,12 +125,9 @@ struct emv_tlv_t* emv_tlv_list_find(struct emv_tlv_list_t* list, unsigned int ta
 #ifdef __GNUC__
 __attribute__((always_inline))
 #endif
-inline const struct emv_tlv_t* emv_tlv_list_find_const(
-	const struct emv_tlv_list_t* list,
-	unsigned int tag
-)
-{
-	return emv_tlv_list_find((struct emv_tlv_list_t*)list, tag);
+inline const struct emv_tlv_t *
+emv_tlv_list_find_const(const struct emv_tlv_list_t *list, unsigned int tag) {
+  return emv_tlv_list_find((struct emv_tlv_list_t *)list, tag);
 }
 
 /**
@@ -140,16 +135,17 @@ inline const struct emv_tlv_t* emv_tlv_list_find_const(
  * @param list EMV TLV list
  * @return Boolean indicating whether EMV TLV list contains duplicate fields
  */
-bool emv_tlv_list_has_duplicate(const struct emv_tlv_list_t* list);
+bool emv_tlv_list_has_duplicate(const struct emv_tlv_list_t *list);
 
 /**
  * Append one EMV TLV list to another
  * @param list EMV TLV list to which to append
- * @param other EMV TLV list that will be appended to the list provided in @c list.
- *              This list will be empty if the function succeeds.
+ * @param other EMV TLV list that will be appended to the list provided in @c
+ * list. This list will be empty if the function succeeds.
  * @return Zero for success. Less than zero for error.
  */
-int emv_tlv_list_append(struct emv_tlv_list_t* list, struct emv_tlv_list_t* other);
+int emv_tlv_list_append(struct emv_tlv_list_t *list,
+                        struct emv_tlv_list_t *other);
 
 /**
  * Parse EMV data.
@@ -164,9 +160,10 @@ int emv_tlv_list_append(struct emv_tlv_list_t* list, struct emv_tlv_list_t* othe
  * @param ptr Encoded EMV data
  * @param len Length of encoded EMV data in bytes
  * @param list Decoded EMV TLV list output.
- * @return Zero for success. Less than zero for internal error. Greater than zero for parse error.
+ * @return Zero for success. Less than zero for internal error. Greater than
+ * zero for parse error.
  */
-int emv_tlv_parse(const void* ptr, size_t len, struct emv_tlv_list_t* list);
+int emv_tlv_parse(const void *ptr, size_t len, struct emv_tlv_list_t *list);
 
 /**
  * Determine whether a specific EMV tag with source 'Terminal' should be
@@ -181,7 +178,8 @@ bool emv_tlv_is_terminal_format_n(unsigned int tag);
 
 /**
  * Convert EMV format "ans" to ISO/IEC 8859 string and omit control characters
- * @note This function is typically needed for Application Preferred Name (field 9F12)
+ * @note This function is typically needed for Application Preferred Name (field
+ * 9F12)
  * @remark See EMV 4.4 Book 1, 4.3
  * @remark See ISO/IEC 8859
  *
@@ -191,12 +189,8 @@ bool emv_tlv_is_terminal_format_n(unsigned int tag);
  * @param str_len Length of string buffer in bytes
  * @return Zero for success. Less than zero for internal error.
  */
-int emv_format_ans_to_non_control_str(
-	const uint8_t* buf,
-	size_t buf_len,
-	char* str,
-	size_t str_len
-);
+int emv_format_ans_to_non_control_str(const uint8_t *buf, size_t buf_len,
+                                      char *str, size_t str_len);
 
 /**
  * Convert EMV format "ans" to ISO/IEC 8859 string containing only alphanumeric
@@ -211,17 +205,14 @@ int emv_format_ans_to_non_control_str(
  * @param str_len Length of string buffer in bytes
  * @return Zero for success. Less than zero for internal error.
  */
-int emv_format_ans_to_alnum_space_str(
-	const uint8_t* buf,
-	size_t buf_len,
-	char* str,
-	size_t str_len
-);
+int emv_format_ans_to_alnum_space_str(const uint8_t *buf, size_t buf_len,
+                                      char *str, size_t str_len);
 
 /**
  * Convert EMV format "b" to ASCII-HEX string containing only hexadecimal
  * characters representing the binary data
- * @note This function is typically needed for Application Identifier (field 4F or 9F06)
+ * @note This function is typically needed for Application Identifier (field 4F
+ * or 9F06)
  *
  * @param buf Buffer to convert
  * @param buf_len Length of buffer in bytes
@@ -229,12 +220,8 @@ int emv_format_ans_to_alnum_space_str(
  * @param str_len Length of string buffer in bytes
  * @return Zero for success. Less than zero for internal error.
  */
-int emv_format_b_to_str(
-	const uint8_t* buf,
-	size_t buf_len,
-	char* str,
-	size_t str_len
-);
+int emv_format_b_to_str(const uint8_t *buf, size_t buf_len, char *str,
+                        size_t str_len);
 
 /**
  * Convert unsigned integer (32-bit) to EMV format "n".
@@ -245,7 +232,8 @@ int emv_format_b_to_str(
  * @param buf_len Length of output buffer in bytes
  * @return Pointer to @c buf. NULL for error.
  */
-const uint8_t* emv_uint_to_format_n(uint32_t value, uint8_t* buf, size_t buf_len);
+const uint8_t *emv_uint_to_format_n(uint32_t value, uint8_t *buf,
+                                    size_t buf_len);
 
 /**
  * Convert EMV format "n" to unsigned integer (32-bit)
@@ -254,9 +242,10 @@ const uint8_t* emv_uint_to_format_n(uint32_t value, uint8_t* buf, size_t buf_len
  * @param buf Buffer to convert
  * @param buf_len Length of buffer in bytes
  * @param value Unsigned integer (32-bit) output
- * @return Zero for success. Less than zero for internal error. Greater than zero for parse error.
+ * @return Zero for success. Less than zero for internal error. Greater than
+ * zero for parse error.
  */
-int emv_format_n_to_uint(const uint8_t* buf, size_t buf_len, uint32_t* value);
+int emv_format_n_to_uint(const uint8_t *buf, size_t buf_len, uint32_t *value);
 
 /**
  * Convert unsigned integer (32-bit) to EMV format "b".
@@ -267,7 +256,8 @@ int emv_format_n_to_uint(const uint8_t* buf, size_t buf_len, uint32_t* value);
  * @param buf_len Length of output buffer in bytes
  * @return Pointer to @c buf. NULL for error.
  */
-const uint8_t* emv_uint_to_format_b(uint32_t value, uint8_t* buf, size_t buf_len);
+const uint8_t *emv_uint_to_format_b(uint32_t value, uint8_t *buf,
+                                    size_t buf_len);
 
 /**
  * Convert EMV format "b" to unsigned integer (32-bit)
@@ -278,7 +268,7 @@ const uint8_t* emv_uint_to_format_b(uint32_t value, uint8_t* buf, size_t buf_len
  * @param value Unsigned integer (32-bit) output
  * @return Zero for success. Less than zero for internal error.
  */
-int emv_format_b_to_uint(const uint8_t* buf, size_t buf_len, uint32_t* value);
+int emv_format_b_to_uint(const uint8_t *buf, size_t buf_len, uint32_t *value);
 
 __END_DECLS
 

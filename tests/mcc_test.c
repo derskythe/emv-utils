@@ -19,57 +19,56 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "mcc_lookup.h"
 #include "emv_utils_config.h"
+#include "mcc_lookup.h"
 
 #include <stdio.h>
 #include <string.h>
 
-int main(void)
-{
-	int r;
-	const char* mcc_str;
+int main(void) {
+  int r;
+  const char *mcc_str;
 
-	// Let unit tests use build path, not install path, for JSON file
-	r = mcc_init(MCC_JSON_BUILD_PATH);
-	if (r) {
-		fprintf(stderr, "mcc_init() failed; r=%d\n", r);
-		return 1;
-	}
+  // Let unit tests use build path, not install path, for JSON file
+  r = mcc_init(MCC_JSON_BUILD_PATH);
+  if (r) {
+    fprintf(stderr, "mcc_init() failed; r=%d\n", r);
+    return 1;
+  }
 
-	mcc_str = mcc_lookup(0);
-	if (mcc_str) {
-		fprintf(stderr, "mcc_lookup() found unexpected MCC '%s'\n", mcc_str);
-		return 1;
-	}
+  mcc_str = mcc_lookup(0);
+  if (mcc_str) {
+    fprintf(stderr, "mcc_lookup() found unexpected MCC '%s'\n", mcc_str);
+    return 1;
+  }
 
-	mcc_str = mcc_lookup(1);
-	if (mcc_str) {
-		fprintf(stderr, "mcc_lookup() found unexpected MCC '%s'\n", mcc_str);
-		return 1;
-	}
+  mcc_str = mcc_lookup(1);
+  if (mcc_str) {
+    fprintf(stderr, "mcc_lookup() found unexpected MCC '%s'\n", mcc_str);
+    return 1;
+  }
 
-	mcc_str = mcc_lookup(5999);
-	if (!mcc_str) {
-		fprintf(stderr, "mcc_lookup() failed\n");
-		return 1;
-	}
-	if (strcmp(mcc_str, "Miscellaneous and Specialty Retail Stores") != 0) {
-		fprintf(stderr, "mcc_lookup() found unexpected MCC '%s'\n", mcc_str);
-		return 1;
-	}
+  mcc_str = mcc_lookup(5999);
+  if (!mcc_str) {
+    fprintf(stderr, "mcc_lookup() failed\n");
+    return 1;
+  }
+  if (strcmp(mcc_str, "Miscellaneous and Specialty Retail Stores") != 0) {
+    fprintf(stderr, "mcc_lookup() found unexpected MCC '%s'\n", mcc_str);
+    return 1;
+  }
 
-	mcc_str = mcc_lookup(7629);
-	if (!mcc_str) {
-		fprintf(stderr, "mcc_lookup() failed\n");
-		return 1;
-	}
-	if (strcmp(mcc_str, "Electrical And Small Appliance Repair Shops") != 0) {
-		fprintf(stderr, "mcc_lookup() found unexpected MCC '%s'\n", mcc_str);
-		return 1;
-	}
+  mcc_str = mcc_lookup(7629);
+  if (!mcc_str) {
+    fprintf(stderr, "mcc_lookup() failed\n");
+    return 1;
+  }
+  if (strcmp(mcc_str, "Electrical And Small Appliance Repair Shops") != 0) {
+    fprintf(stderr, "mcc_lookup() found unexpected MCC '%s'\n", mcc_str);
+    return 1;
+  }
 
-	printf("Success\n");
+  printf("Success\n");
 
-	return 0;
+  return 0;
 }
