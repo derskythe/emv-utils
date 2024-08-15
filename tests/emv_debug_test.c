@@ -26,22 +26,22 @@
 #include <stdint.h>
 #include <stdio.h>
 
-int main(void)
-{
-	int r;
-	size_t asdf = 1337;
-	uint8_t foo[] = { 0xde, 0xad, 0xbe, 0xef };
+int main(void) {
+  int r;
+  size_t asdf = 1337;
+  uint8_t foo[] = {0xde, 0xad, 0xbe, 0xef};
 
-	// Enable debug output
-	r = emv_debug_init(EMV_DEBUG_SOURCE_ALL, EMV_DEBUG_ALL, &print_emv_debug);
-	if (r) {
-		fprintf(stderr, "emv_debug_init() failed; r=%d\n", r);
-		return 1;
-	}
+  // Enable debug output
+  r = emv_debug_init(EMV_DEBUG_SOURCE_ALL, EMV_DEBUG_ALL, &print_emv_debug);
+  if (r) {
+    fprintf(stderr, "emv_debug_init() failed; r=%d\n", r);
+    return 1;
+  }
 
-	// Test whether compiler supports length modifier z both at compile-time and runtime
-	emv_debug_error("asdf=%zu", asdf);
+  // Test whether compiler supports length modifier z both at compile-time and
+  // runtime
+  emv_debug_error("asdf=%zu", asdf);
 
-	// Test trace logging and data output
-	emv_debug_trace_data("This is a trace message", foo, sizeof(foo));
+  // Test trace logging and data output
+  emv_debug_trace_data("This is a trace message", foo, sizeof(foo));
 }

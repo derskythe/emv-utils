@@ -27,16 +27,16 @@
 
 /// Transport/Application Protocol Data Unit (xPDU)
 struct xpdu_t {
-	size_t c_xpdu_len;
-	const uint8_t* c_xpdu;
-	size_t r_xpdu_len;
-	const uint8_t* r_xpdu;
+  size_t c_xpdu_len;
+  const uint8_t *c_xpdu;
+  size_t r_xpdu_len;
+  const uint8_t *r_xpdu;
 };
 
 /// Card reader emulator context
 struct emv_cardreader_emul_ctx_t {
-	const struct xpdu_t* xpdu_list;
-	const struct xpdu_t* xpdu_current;
+  const struct xpdu_t *xpdu_list;
+  const struct xpdu_t *xpdu_current;
 };
 
 /**
@@ -48,12 +48,7 @@ struct emv_cardreader_emul_ctx_t {
  * @param rx_buf Receive buffer
  * @param rx_buf_len Length of receive buffer in bytes
  */
-int emv_cardreader_emul(
-	void* ctx,
-	const void* tx_buf,
-	size_t tx_buf_len,
-	void* rx_buf,
-	size_t* rx_buf_len
-);
+int emv_cardreader_emul(void *ctx, const void *tx_buf, size_t tx_buf_len,
+                        void *rx_buf, size_t *rx_buf_len);
 
 #endif

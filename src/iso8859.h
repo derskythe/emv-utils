@@ -22,10 +22,10 @@
 #ifndef ISO8859_H
 #define ISO8859_H
 
-#include <sys/cdefs.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdbool.h>
+#include <sys/cdefs.h>
 
 __BEGIN_DECLS
 
@@ -43,15 +43,11 @@ bool iso8859_is_supported(unsigned int codepage);
  * @param iso8859_len Length of ISO/IEC 8859 buffer in bytes
  * @param utf8 UTF-8 buffer output
  * @param utf8_len Length of UTF-8 buffer in bytes
- * @return Zero for success. Less than zero for internal error. Greater than zero for parse error.
+ * @return Zero for success. Less than zero for internal error. Greater than
+ * zero for parse error.
  */
-int iso8859_to_utf8(
-	unsigned int codepage,
-	const uint8_t* iso8859,
-	size_t iso8859_len,
-	char* utf8,
-	size_t utf8_len
-);
+int iso8859_to_utf8(unsigned int codepage, const uint8_t *iso8859,
+                    size_t iso8859_len, char *utf8, size_t utf8_len);
 
 __END_DECLS
 

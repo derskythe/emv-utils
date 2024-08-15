@@ -29,16 +29,17 @@ __BEGIN_DECLS
 /**
  * Initialise Merchant Category Code (MCC) data
  * @param path Override path of mcc-codes JSON file. NULL for default path.
- * @return Zero for success. Less than zero for internal error. Greater than zero if mcc-codes JSON file not found.
+ * @return Zero for success. Less than zero for internal error. Greater than
+ * zero if mcc-codes JSON file not found.
  */
-int mcc_init(const char* path);
+int mcc_init(const char *path);
 
 /**
  * Lookup Merchant Category Code (MCC) string
  * @param mcc Merchant Category Code (MCC)
  * @return Merchant Category Code (MCC) string. NULL if not found.
  */
-const char* mcc_lookup(unsigned int mcc);
+const char *mcc_lookup(unsigned int mcc);
 
 __END_DECLS
 
